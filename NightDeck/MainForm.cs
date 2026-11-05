@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -16,6 +17,7 @@ public sealed class MainForm : Form
     private readonly TableLayoutPanel root = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly FlowLayoutPanel toolbar = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = false, BackColor = Bar, Padding = new Padding(5, 4, 5, 2) };
     private readonly TableLayoutPanel board = new() { Dock = DockStyle.Fill, BackColor = Background, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly Panel toolbarSpacer = new() { Width = 0, Height = 29, Margin = Padding.Empty };
     private readonly Label ram = new() { AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(10, 8, 8, 0) };
     private readonly Panel[] panes = new Panel[4];
     private readonly WebView2[] browsers = new WebView2[4];
@@ -51,6 +53,7 @@ public sealed class MainForm : Form
         Controls.Add(root);
         BuildMainMenu();
         BuildToolbar();
+        toolbar.Resize += (_, _) => AlignToolbar();
         for (int i = 0; i < 4; i++) BuildPane(i);
         Rebuild();
         ramTimer.Tick += (_, _) => RefreshRam();
@@ -140,7 +143,7 @@ public sealed class MainForm : Form
 
     private static Button Btn(string text, string tip, Action action, bool selected = false, int width = 0)
     {
-        var b = new Button
+        var b = new RoundedButton
         {
             Text = text, AutoSize = width == 0, Width = width == 0 ? 0 : width,
             Height = 29, FlatStyle = FlatStyle.Flat, BackColor = selected ? Accent : ButtonColor,
@@ -153,6 +156,35 @@ public sealed class MainForm : Form
         b.Click += (_, _) => action();
         new ToolTip().SetToolTip(b, tip);
         return b;
+    }
+
+    private sealed class RoundedButton : Button
+    {
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (Width < 10 || Height < 10) return;
+            using var path = new GraphicsPath();
+            const int radius = 7;
+            int d = radius * 2;
+            path.AddArc(0, 0, d, d, 180, 90);
+            path.AddArc(Width - d - 1, 0, d, d, 270, 90);
+            path.AddArc(Width - d - 1, Height - d - 1, d, d, 0, 90);
+            path.AddArc(0, Height - d - 1, d, d, 90, 90);
+            path.CloseFigure();
+            var old = Region;
+            Region = new Region(path);
+            old?.Dispose();
+        }
+    }
+
+    private void AlignToolbar()
+    {
+        if (toolbarSpacer.IsDisposed || toolbar.IsDisposed) return;
+        int other = toolbar.Controls.Cast<Control>().Where(c => c != toolbarSpacer && c.Visible)
+            .Sum(c => c.Width + c.Margin.Horizontal);
+        int width = Math.Max(0, toolbar.ClientSize.Width - toolbar.Padding.Horizontal - other - 6);
+        if (toolbarSpacer.Width != width) toolbarSpacer.Width = width;
     }
 
     private void BuildToolbar()
@@ -168,6 +200,7 @@ public sealed class MainForm : Form
         }
         toolbar.Controls.Add(Btn("Todas", "Mostrar todas as contas", () => { focused = null; Array.Fill(hidden, false); Rebuild(); }));
         toolbar.Controls.Add(ram);
+        toolbar.Controls.Add(toolbarSpacer);
         toolbar.Controls.Add(Btn("−", "Diminuir zoom de todas", () => SetGlobalZoom(-.1)));
         toolbar.Controls.Add(Btn("60%", "Restaurar zoom para 60%", () => { for (int i = 0; i < 4; i++) SetZoom(i, .6); }));
         toolbar.Controls.Add(Btn("+", "Aumentar zoom de todas", () => SetGlobalZoom(.1)));
@@ -176,6 +209,8 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(Btn("Navegador", "Abrir PokeIdle no navegador padrão", () => OpenUrl(GameUrl)));
         toolbar.Controls.Add(Btn("Onde caçar", "Abrir ferramenta de caça", () => OpenUrl("https://pokeidle-ferramentas.pages.dev/#hunt")));
         toolbar.Controls.Add(Btn("Echo", "Sincronização de cliques será adicionada em uma próxima etapa", () => MessageBox.Show("Echo ainda não está implementado nesta base nova.", "Night Deck")));
+        toolbar.Controls.Add(Btn("T", "Abrir Twitch no navegador com acesso ao chat", () => OpenUrl("https://www.twitch.tv/"), width: 32));
+        AlignToolbar();
     }
 
     private void BuildPane(int i)
@@ -184,21 +219,46 @@ public sealed class MainForm : Form
         var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 28, BackColor = Bar, WrapContents = false, Padding = Padding.Empty };
         var name = new Label { Text = $"🟢 Conta {i + 1}", AutoSize = true, ForeColor = Color.White, Margin = new Padding(6, 7, 10, 0), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold) };
         header.Controls.Add(name);
-        header.Controls.Add(Btn("−", "Diminuir zoom", () => SetZoom(i, zooms[i] - .1), width: 30));
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 350, Height = 28,
+            WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = Padding.Empty, Padding = Padding.Empty };
+        actions.Controls.Add(Btn("−", "Diminuir zoom", () => SetZoom(i, zooms[i] - .1), width: 30));
         var zoom = new Label { Text = "60%", ForeColor = Color.White, Width = 38, Height = 25, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(0, 2, 0, 0) };
         zoomLabels[i] = zoom;
-        header.Controls.Add(zoom);
-        header.Controls.Add(Btn("+", "Aumentar zoom", () => SetZoom(i, zooms[i] + .1), width: 30));
-        header.Controls.Add(Btn("◖))", "Ativar ou desativar som", () => { muted[i] = !muted[i]; if (browsers[i].CoreWebView2 is not null) browsers[i].CoreWebView2.IsMuted = muted[i]; }, width: 43));
-        header.Controls.Add(Btn("⟳", "Recarregar", () => browsers[i].CoreWebView2?.Reload(), width: 30));
-        header.Controls.Add(Btn("⛶", "Expandir conta", () => { focused = focused == i ? null : i; Rebuild(); }, width: 30));
-        header.Controls.Add(Btn("◉", "Ocultar conta", () => { hidden[i] = true; focused = null; Rebuild(); }, width: 30));
+        actions.Controls.Add(zoom);
+        actions.Controls.Add(Btn("+", "Aumentar zoom", () => SetZoom(i, zooms[i] + .1), width: 30));
+        actions.Controls.Add(Btn("◖))", "Ativar ou desativar som", () => { muted[i] = !muted[i]; if (browsers[i].CoreWebView2 is not null) browsers[i].CoreWebView2.IsMuted = muted[i]; }, width: 43));
+        actions.Controls.Add(Btn("⟳", "Recarregar", () => browsers[i].CoreWebView2?.Reload(), width: 30));
+        actions.Controls.Add(Btn("⛶", "Expandir conta", () => { focused = focused == i ? null : i; Rebuild(); }, width: 30));
+        actions.Controls.Add(Btn("◉", "Ocultar conta", () => { hidden[i] = true; focused = null; Rebuild(); }, width: 30));
+        actions.Controls.Add(Btn("🛒", "Abrir mercado do PokeIdle nesta conta", () => OpenMarket(i), width: 36));
+        header.Controls.Add(actions);
         var browser = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 19, 31) };
         browsers[i] = browser;
         pane.Controls.Add(browser);
         pane.Controls.Add(header);
         panes[i] = pane;
         _ = InitBrowser(i);
+    }
+
+    private async void OpenMarket(int i)
+    {
+        var browser = browsers[i];
+        if (browser.CoreWebView2 is null) return;
+        // Nao compra itens automaticamente: apenas abre o mercado dentro da conta selecionada.
+        const string script = @"(() => {
+          const links = [...document.querySelectorAll('a, button, [role=button]')];
+          const target = links.find(el => /^(market|mercado)$/i.test((el.textContent || '').trim()));
+          if (target) { target.click(); return true; }
+          return false;
+        })()";
+        try
+        {
+            var found = await browser.CoreWebView2.ExecuteScriptAsync(script);
+            if (found != "true") MessageBox.Show(this,
+                "Não encontrei o botão Mercado nesta página. Abra o mercado manualmente.\nA recompra automática ainda não está implementada.",
+                "Restock", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Restock"); }
     }
 
     private async Task InitBrowser(int i)
