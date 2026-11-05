@@ -1,0 +1,215 @@
+using System.Diagnostics;
+using System.Drawing;
+using System.Text.Json;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+
+namespace NightDeck;
+
+public sealed class MainForm : Form
+{
+    private static readonly Color Background = Color.FromArgb(8, 12, 20);
+    private static readonly Color Bar = Color.FromArgb(17, 24, 39);
+    private static readonly Color ButtonColor = Color.FromArgb(30, 41, 59);
+    private static readonly Color Accent = Color.FromArgb(153, 27, 27);
+    private const string GameUrl = "https://pokeidle.io/";
+    private readonly TableLayoutPanel root = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly FlowLayoutPanel toolbar = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = false, BackColor = Bar, Padding = new Padding(5, 4, 5, 2) };
+    private readonly TableLayoutPanel board = new() { Dock = DockStyle.Fill, BackColor = Background, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly Label ram = new() { AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(10, 8, 8, 0) };
+    private readonly Panel[] panes = new Panel[4];
+    private readonly WebView2[] browsers = new WebView2[4];
+    private readonly Label[] zoomLabels = new Label[4];
+    private readonly bool[] muted = new bool[4];
+    private readonly bool[] hidden = new bool[4];
+    private readonly double[] zooms = { .6, .6, .6, .6 };
+    private readonly System.Windows.Forms.Timer ramTimer = new() { Interval = 3000 };
+    private readonly string settingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Night Deck", "settings.json");
+    private string layout = "grid";
+    private int? focused;
+    private bool fullScreen;
+    private FormBorderStyle previousBorder;
+    private FormWindowState previousState;
+
+    public MainForm()
+    {
+        Text = "Night Deck";
+        MinimumSize = new Size(900, 520);
+        WindowState = FormWindowState.Maximized;
+        BackColor = Background;
+        ForeColor = Color.White;
+        LoadSettings();
+        root.RowCount = 2;
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Add(toolbar, 0, 0);
+        root.Controls.Add(board, 0, 1);
+        Controls.Add(root);
+        BuildToolbar();
+        for (int i = 0; i < 4; i++) BuildPane(i);
+        Rebuild();
+        ramTimer.Tick += (_, _) => RefreshRam();
+        ramTimer.Start();
+        RefreshRam();
+        FormClosing += (_, _) => SaveSettings();
+        KeyPreview = true;
+        KeyDown += (_, e) => { if (e.KeyCode == Keys.F11) ToggleFullscreen(); };
+    }
+
+    private static Button Btn(string text, string tip, Action action, bool selected = false, int width = 0)
+    {
+        var b = new Button
+        {
+            Text = text, AutoSize = width == 0, Width = width == 0 ? 0 : width,
+            Height = 29, FlatStyle = FlatStyle.Flat, BackColor = selected ? Accent : ButtonColor,
+            ForeColor = Color.White, Margin = new Padding(2, 2, 2, 0),
+            Padding = new Padding(7, 0, 7, 0), Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular)
+        };
+        b.FlatAppearance.BorderColor = Color.FromArgb(60, 75, 95);
+        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 65, 85);
+        b.Click += (_, _) => action();
+        new ToolTip().SetToolTip(b, tip);
+        return b;
+    }
+
+    private void BuildToolbar()
+    {
+        toolbar.Controls.Clear();
+        toolbar.Controls.Add(Btn("Grade 2×2", "Quatro contas em grade", () => { layout = "grid"; focused = null; Rebuild(); SaveSettings(); }, layout == "grid"));
+        toolbar.Controls.Add(Btn("Vertical 1×4", "Quatro contas lado a lado", () => { layout = "row"; focused = null; Rebuild(); SaveSettings(); }, layout == "row"));
+        toolbar.Controls.Add(Btn("Cores", "Personalização será adicionada na próxima etapa", () => MessageBox.Show("Personalização de cores será adicionada em uma próxima etapa.", "Night Deck")));
+        for (int i = 0; i < 4; i++)
+        {
+            int n = i;
+            toolbar.Controls.Add(Btn($"{i + 1} Conta {i + 1}", "Focar esta conta (clique novamente para voltar)", () => { hidden[n] = false; focused = focused == n ? null : n; Rebuild(); }, focused == i));
+        }
+        toolbar.Controls.Add(Btn("Todas", "Mostrar todas as contas", () => { focused = null; Array.Fill(hidden, false); Rebuild(); }));
+        toolbar.Controls.Add(ram);
+        toolbar.Controls.Add(Btn("−", "Diminuir zoom de todas", () => SetGlobalZoom(-.1)));
+        toolbar.Controls.Add(Btn("60%", "Restaurar zoom para 60%", () => { for (int i = 0; i < 4; i++) SetZoom(i, .6); }));
+        toolbar.Controls.Add(Btn("+", "Aumentar zoom de todas", () => SetGlobalZoom(.1)));
+        toolbar.Controls.Add(Btn("⛶", "Tela cheia (F11)", ToggleFullscreen));
+        toolbar.Controls.Add(Btn("⟳ Todas", "Recarregar as quatro contas", () => { foreach (var b in browsers) b?.CoreWebView2?.Reload(); }));
+        toolbar.Controls.Add(Btn("Navegador", "Abrir PokeIdle no navegador padrão", () => OpenUrl(GameUrl)));
+        toolbar.Controls.Add(Btn("Onde caçar", "Abrir ferramenta de caça", () => OpenUrl("https://pokeidle-ferramentas.pages.dev/#hunt")));
+        toolbar.Controls.Add(Btn("Echo", "Sincronização de cliques será adicionada em uma próxima etapa", () => MessageBox.Show("Echo ainda não está implementado nesta base nova.", "Night Deck")));
+    }
+
+    private void BuildPane(int i)
+    {
+        var pane = new Panel { Dock = DockStyle.Fill, Margin = new Padding(2), BackColor = Color.FromArgb(12, 19, 31) };
+        var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 28, BackColor = Bar, WrapContents = false, Padding = Padding.Empty };
+        var name = new Label { Text = $"🟢 Conta {i + 1}", AutoSize = true, ForeColor = Color.White, Margin = new Padding(6, 7, 10, 0), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold) };
+        header.Controls.Add(name);
+        header.Controls.Add(Btn("−", "Diminuir zoom", () => SetZoom(i, zooms[i] - .1), width: 30));
+        var zoom = new Label { Text = "60%", ForeColor = Color.White, Width = 38, Height = 25, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(0, 2, 0, 0) };
+        zoomLabels[i] = zoom;
+        header.Controls.Add(zoom);
+        header.Controls.Add(Btn("+", "Aumentar zoom", () => SetZoom(i, zooms[i] + .1), width: 30));
+        header.Controls.Add(Btn("◖))", "Ativar ou desativar som", () => { muted[i] = !muted[i]; if (browsers[i].CoreWebView2 is not null) browsers[i].CoreWebView2.IsMuted = muted[i]; }, width: 43));
+        header.Controls.Add(Btn("⟳", "Recarregar", () => browsers[i].CoreWebView2?.Reload(), width: 30));
+        header.Controls.Add(Btn("⛶", "Expandir conta", () => { focused = focused == i ? null : i; Rebuild(); }, width: 30));
+        header.Controls.Add(Btn("◉", "Ocultar conta", () => { hidden[i] = true; focused = null; Rebuild(); }, width: 30));
+        var browser = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 19, 31) };
+        browsers[i] = browser;
+        pane.Controls.Add(browser);
+        pane.Controls.Add(header);
+        panes[i] = pane;
+        _ = InitBrowser(i);
+    }
+
+    private async Task InitBrowser(int i)
+    {
+        try
+        {
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Night Deck", "Accounts", $"Account{i + 1}");
+            Directory.CreateDirectory(folder);
+            var env = await CoreWebView2Environment.CreateAsync(null, folder);
+            if (IsDisposed || browsers[i].IsDisposed) return;
+            await browsers[i].EnsureCoreWebView2Async(env);
+            browsers[i].CoreWebView2.Settings.AreDevToolsEnabled = false;
+            browsers[i].CoreWebView2.IsMuted = muted[i];
+            browsers[i].ZoomFactor = zooms[i];
+            browsers[i].CoreWebView2.Navigate(GameUrl);
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed) MessageBox.Show($"Não foi possível iniciar a Conta {i + 1}: {ex.Message}", "Night Deck");
+        }
+    }
+
+    private void SetZoom(int i, double value)
+    {
+        zooms[i] = Math.Round(Math.Clamp(value, .3, 1.5), 2);
+        zoomLabels[i].Text = $"{zooms[i] * 100:0}%";
+        if (browsers[i]?.CoreWebView2 != null) browsers[i].ZoomFactor = zooms[i];
+        SaveSettings();
+    }
+    private void SetGlobalZoom(double delta) { for (int i = 0; i < 4; i++) SetZoom(i, zooms[i] + delta); }
+
+    private void Rebuild()
+    {
+        board.SuspendLayout();
+        board.Controls.Clear();
+        board.ColumnStyles.Clear(); board.RowStyles.Clear();
+        var indices = focused is int f ? new[] { f } : Enumerable.Range(0, 4).Where(i => !hidden[i]).ToArray();
+        if (indices.Length == 0) { Array.Fill(hidden, false); indices = Enumerable.Range(0, 4).ToArray(); }
+        int cols = focused.HasValue ? 1 : layout == "row" ? indices.Length : Math.Min(2, indices.Length);
+        int rows = (int)Math.Ceiling(indices.Length / (double)cols);
+        board.ColumnCount = cols; board.RowCount = rows;
+        for (int c = 0; c < cols; c++) board.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / cols));
+        for (int r = 0; r < rows; r++) board.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows));
+        for (int k = 0; k < indices.Length; k++)
+        {
+            var pane = panes[indices[k]];
+            if (pane.Parent != null) pane.Parent.Controls.Remove(pane);
+            board.Controls.Add(pane, k % cols, k / cols);
+        }
+        board.ResumeLayout(true);
+        BuildToolbar();
+    }
+
+    private void RefreshRam()
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            long bytes = process.WorkingSet64;
+            ram.Text = $"● RAM {bytes / 1024d / 1024d:0} MB (processo principal)";
+        }
+        catch { ram.Text = "RAM —"; }
+    }
+
+    private void ToggleFullscreen()
+    {
+        if (!fullScreen)
+        {
+            previousBorder = FormBorderStyle; previousState = WindowState;
+            WindowState = FormWindowState.Normal; FormBorderStyle = FormBorderStyle.None; WindowState = FormWindowState.Maximized;
+        }
+        else { WindowState = FormWindowState.Normal; FormBorderStyle = previousBorder; WindowState = previousState; }
+        fullScreen = !fullScreen;
+    }
+    private static void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "Night Deck"); }
+    }
+    private void SaveSettings()
+    {
+        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms })); }
+        catch { }
+    }
+    private void LoadSettings()
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(File.ReadAllText(settingsFile));
+            if (json.RootElement.TryGetProperty("layout", out var l)) layout = l.GetString() == "row" ? "row" : "grid";
+            if (json.RootElement.TryGetProperty("zooms", out var z) && z.ValueKind == JsonValueKind.Array)
+                for (int i = 0; i < Math.Min(4, z.GetArrayLength()); i++) zooms[i] = Math.Clamp(z[i].GetDouble(), .3, 1.5);
+        }
+        catch { }
+    }
+}
