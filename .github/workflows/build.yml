@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Obter codigo
         uses: actions/checkout@v5
@@ -25,7 +25,7 @@ jobs:
         run: dotnet restore NightDeck/NightDeck.csproj -r win-x64
 
       - name: Compilar para Windows x64
-        run: dotnet publish NightDeck/NightDeck.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+        run: dotnet publish NightDeck/NightDeck.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=1.0.${{ github.run_number }} -o publish
 
       - name: Disponibilizar executavel
         uses: actions/upload-artifact@v5
@@ -34,3 +34,29 @@ jobs:
           path: publish/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Instalar criador do instalador
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Criar instalador Windows
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=1.0.${{ github.run_number }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publicar instalador como Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: Night-Deck-Installer
+          path: dist/Night-Deck-Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publicar Release para o atualizador
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.0.${{ github.run_number }}" "dist/Night-Deck-Setup.exe" --repo "${{ github.repository }}" --title "Night Deck v1.0.${{ github.run_number }}" --notes "Compilação Windows x64 do Night Deck." --latest
