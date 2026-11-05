@@ -168,7 +168,6 @@ public sealed class MainWindow : Window
     {
         twitchFrames[account].Add(frame);
         frame.Destroyed += (_, _) => twitchFrames[account].Remove(frame);
-        frame.FrameCreated += (_, args) => RegisterTwitchFrame(account, args.Frame);
     }
 
     private async Task OpenLiveTwitchAsync()
