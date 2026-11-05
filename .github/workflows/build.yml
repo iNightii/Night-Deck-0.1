@@ -1,0 +1,36 @@
+name: Build Night Deck Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v5
+
+      - name: Preparar .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restaurar dependencias
+        run: dotnet restore NightDeck/NightDeck.csproj
+
+      - name: Compilar para Windows x64
+        run: dotnet publish NightDeck/NightDeck.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+
+      - name: Disponibilizar executavel
+        uses: actions/upload-artifact@v4
+        with:
+          name: Night-Deck-Windows-x64
+          path: publish/
+          if-no-files-found: error
+          retention-days: 30
