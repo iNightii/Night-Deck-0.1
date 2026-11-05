@@ -274,28 +274,93 @@ public sealed class MainWindow : Window
 
     private void ShowRestock(int i)
     {
+        // Settings modeled on restock-ui.js v1.45.2. Actual market execution is separate.
+        var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Night Deck", $"restock-account-{i + 1}.json");
+        RestockSettings cfg;
+        try { cfg = JsonSerializer.Deserialize<RestockSettings>(File.ReadAllText(file)) ?? new(); }
+        catch { cfg = new(); }
         var window = new Window
         {
-            Title = $"Restock — Conta {i + 1}",
-            Owner = this, Width = 370, Height = 285,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = $"Restock — Conta {i + 1}", Owner = this, Width = 520, Height = 680,
+            MinWidth = 440, MinHeight = 540, WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Background = BarBrush, Foreground = Brushes.White
         };
         var panel = new StackPanel { Margin = new Thickness(18) };
-        panel.Children.Add(new TextBlock { Text = "Reposição de recursos", FontSize = 17, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 12) });
-        panel.Children.Add(new TextBlock { Text = "Escolha a quantidade desejada para futura recompra:", TextWrapping = TextWrapping.Wrap });
-        var balls = new TextBox { Text = "100", Margin = new Thickness(0, 7, 0, 7), ToolTip = "Quantidade alvo de Pokéballs" };
-        var potions = new TextBox { Text = "50", Margin = new Thickness(0, 0, 0, 8), ToolTip = "Quantidade alvo de poções" };
-        panel.Children.Add(new TextBlock { Text = "Pokéballs (quantidade alvo)" });
-        panel.Children.Add(balls);
-        panel.Children.Add(new TextBlock { Text = "Poções (quantidade alvo)" });
-        panel.Children.Add(potions);
-        var note = new TextBlock { Text = "A recompra automática ainda depende da integração com o mercado do jogo. Nenhuma compra será feita por este painel.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 2, 0, 10) };
-        panel.Children.Add(note);
-        panel.Children.Add(Btn("Abrir mercado desta conta", "Tentar abrir o mercado sem comprar", () => { window.Close(); _ = OpenMarketAsync(i); }));
-        window.Content = panel;
+        panel.Children.Add(new TextBlock { Text = $"Recompra — Conta {i + 1}", FontSize = 18, FontWeight = FontWeights.Bold });
+        panel.Children.Add(new TextBlock { Text = "Configurações adaptadas da versão 1.45.2. O motor de compra ainda não está conectado.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 8, 0, 12) });
+        CheckBox Check(string label, bool value)
+        {
+            var c = new CheckBox { Content = label, IsChecked = value, Foreground = Brushes.White, Margin = new Thickness(0, 6, 0, 4) };
+            panel.Children.Add(c); return c;
+        }
+        TextBox Field(string label, long value)
+        {
+            panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 5, 0, 2) });
+            var t = new TextBox { Text = value.ToString(), Margin = new Thickness(0, 0, 0, 5), MinHeight = 24 };
+            panel.Children.Add(t); return t;
+        }
+        var ballsOn = Check("Repor Pokéballs", cfg.BallsOn);
+        var ballId = Field("ID da Pokéball", cfg.BallId);
+        var ballKeep = Field("Estoque alvo de Pokéballs", cfg.BallKeep);
+        var ballBelow = Field("Repor quando abaixo de", cfg.BallBelow);
+        var revivesOn = Check("Repor Revives", cfg.RevivesOn);
+        var reviveKeep = Field("Estoque alvo de Revives", cfg.ReviveKeep);
+        var reviveBelow = Field("Repor Revives quando abaixo de", cfg.ReviveBelow);
+        var potionsOn = Check("Repor poções", cfg.PotionsOn);
+        var potionId = Field("ID da poção", cfg.PotionId);
+        var potionKeep = Field("Estoque alvo de poções", cfg.PotionKeep);
+        var potionBelow = Field("Repor poções quando abaixo de", cfg.PotionBelow);
+        var potionFirst = Check("Priorizar poções", cfg.PotionFirst);
+        var goldFloor = Field("Reserva mínima de ouro", cfg.GoldFloor);
+        panel.Children.Add(Btn("Salvar configuração", "Salva apenas os valores, sem realizar compras", () =>
+        {
+            bool Parse(TextBox field, long max, out long value) =>
+                long.TryParse(field.Text, out value) && value >= 0 && value <= max;
+            if (!Parse(ballId, 10000000, out var bi) || !Parse(ballKeep, 10000000, out var bk) ||
+                !Parse(ballBelow, 10000000, out var bb) || !Parse(reviveKeep, 10000000, out var rk) ||
+                !Parse(reviveBelow, 10000000, out var rb) || !Parse(potionId, 10000000, out var pi) ||
+                !Parse(potionKeep, 10000000, out var pk) || !Parse(potionBelow, 10000000, out var pb) ||
+                !Parse(goldFloor, 1000000000000, out var gf))
+            {
+                MessageBox.Show(window, "Preencha os campos com números válidos e não negativos.", "Restock");
+                return;
+            }
+            var settings = new RestockSettings
+            {
+                BallsOn = ballsOn.IsChecked == true, BallId = bi, BallKeep = bk, BallBelow = bb,
+                RevivesOn = revivesOn.IsChecked == true, ReviveKeep = rk, ReviveBelow = rb,
+                PotionsOn = potionsOn.IsChecked == true, PotionId = pi, PotionKeep = pk, PotionBelow = pb,
+                PotionFirst = potionFirst.IsChecked == true, GoldFloor = gf
+            };
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllText(file, JsonSerializer.Serialize(settings));
+                MessageBox.Show(window, "Configuração salva. A recompra automática ainda não está ativa.", "Restock");
+                window.Close();
+            }
+            catch (Exception ex) { MessageBox.Show(window, ex.Message, "Restock"); }
+        }));
+        window.Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         window.ShowDialog();
+    }
+
+    private sealed class RestockSettings
+    {
+        public bool BallsOn { get; set; } = true;
+        public long BallId { get; set; } = 4;
+        public long BallKeep { get; set; } = 30000;
+        public long BallBelow { get; set; } = 5000;
+        public bool RevivesOn { get; set; } = true;
+        public long ReviveKeep { get; set; } = 500;
+        public long ReviveBelow { get; set; } = 100;
+        public bool PotionsOn { get; set; } = true;
+        public long PotionId { get; set; } = 204;
+        public long PotionKeep { get; set; } = 5000;
+        public long PotionBelow { get; set; } = 2000;
+        public bool PotionFirst { get; set; } = true;
+        public long GoldFloor { get; set; } = 1000000;
     }
 
     private async Task OpenMarketAsync(int i)
