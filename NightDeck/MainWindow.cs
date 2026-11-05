@@ -72,7 +72,14 @@ public sealed class MainWindow : Window
         ramTimer.Tick += (_, _) => RefreshRam();
         ramTimer.Start();
         RefreshRam();
-        Loaded += async (_, _) => { await Task.Delay(4000); if (IsLoaded) await CheckUpdatesAsync(false); };
+        Loaded += async (_, _) =>
+        {
+            // WPF WebView2 must be attached to a loaded visual tree before initialization.
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            for (int i = 0; i < browsers.Length; i++) _ = InitBrowserAsync(i);
+            await Task.Delay(4000);
+            if (IsLoaded) await CheckUpdatesAsync(false);
+        };
         Closing += (_, _) => SaveSettings();
         KeyDown += (_, e) => { if (e.Key == Key.F11) ToggleFullscreen(); };
     }
@@ -168,7 +175,6 @@ public sealed class MainWindow : Window
         browsers[i] = browser;
         dock.Children.Add(browser);
         panes[i] = new Border { Child = dock, Margin = new Thickness(2), Background = Brush("#0C131F"), CornerRadius = new CornerRadius(5), ClipToBounds = true };
-        _ = InitBrowserAsync(i);
     }
 
     private async Task InitBrowserAsync(int i)
@@ -178,14 +184,16 @@ public sealed class MainWindow : Window
             var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Night Deck", "Accounts", $"Account{i + 1}");
             Directory.CreateDirectory(folder);
             var env = await CoreWebView2Environment.CreateAsync(null, folder);
-            if (!IsLoaded && !IsVisible) { /* Initial load is allowed before the window appears. */ }
             await browsers[i].EnsureCoreWebView2Async(env);
             browsers[i].CoreWebView2.Settings.AreDevToolsEnabled = false;
             browsers[i].CoreWebView2.IsMuted = muted[i];
             browsers[i].ZoomFactor = zooms[i];
             browsers[i].CoreWebView2.Navigate(GameUrl);
         }
-        catch (Exception ex) { if (IsVisible) MessageBox.Show(this, $"Conta {i + 1}: {ex.Message}", "Night Deck"); }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Não foi possível iniciar a Conta {i + 1}.\n\n{ex.Message}", "Erro WebView2", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private async Task OpenMarketAsync(int i)
