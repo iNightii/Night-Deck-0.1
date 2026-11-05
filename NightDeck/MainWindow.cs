@@ -144,7 +144,7 @@ public sealed class MainWindow : Window
 
     private Button TwitchButton()
     {
-        var button = Btn("", "MultiTwitch — configurar canais", ShowMultiTwitch, width: 38);
+        var button = Btn("", "Abrir canais ao vivo do PokeIdle", () => _ = OpenLiveTwitchAsync(), width: 38);
         var icon = new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M 2,2 L 23,2 23,17 17,23 12,23 8,27 8,23 2,23 Z M 10,9 L 10,17 M 17,9 L 17,17"),
@@ -160,41 +160,62 @@ public sealed class MainWindow : Window
         return button;
     }
 
-    private void ShowMultiTwitch()
+    private async Task OpenLiveTwitchAsync()
     {
-        var window = new Window
+        // Port of the live-channel discovery from Electron v1.45.2.
+        // The PokeIdle bonus panel must be visible. Never assume offline channels are live.
+        const string script = """
+            (() => {
+              const found = new Set();
+              const valid = n => /^[A-Za-z0-9_]{3,25}$/.test(n);
+              const live = t => /ao\\s*vivo/i.test(t || '');
+              const stop = /^(b[ôo]nus|ativado|ao|vivo|offline|canais|oficiais|live|lives|twitch)$/i;
+              document.querySelectorAll('a[href*="twitch.tv/"]').forEach(a => {
+                const m = a.href.match(/twitch\\.tv\\/([A-Za-z0-9_]+)/);
+                if (!m || !valid(m[1])) return;
+                for (let el = a, k = 0; k < 6 && el; k++, el = el.parentElement) {
+                  if (live(el.innerText)) {
+                    if (el.matches('a') || el.querySelectorAll('a[href*="twitch.tv/"]').length === 1) found.add(m[1]);
+                    break;
+                  }
+                }
+              });
+              if (!found.size) {
+                const lines = (document.body.innerText || '').split('\\n').map(t => t.trim()).filter(Boolean);
+                lines.forEach((line, i) => {
+                  if (!live(line)) return;
+                  for (let j = i; j >= 0 && j >= i - 5; j--) {
+                    const tokens = lines[j].split(/[\\s·•|]+/).map(t => t.replace(/^[^A-Za-z0-9_]+|[^A-Za-z0-9_]+$/g, '')).filter(Boolean);
+                    const candidate = tokens.find(t => valid(t) && !stop.test(t) && !/^\\d+$/.test(t));
+                    if (candidate) { found.add(candidate); break; }
+                  }
+                });
+              }
+              return [...found];
+            })()
+            """;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var browser in browsers)
         {
-            Title = "MultiTwitch — Night Deck",
-            Owner = this, Width = 470, Height = 275,
-            MinWidth = 420, MinHeight = 255,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = BarBrush, Foreground = Brushes.White
-        };
-        var panel = new StackPanel { Margin = new Thickness(18) };
-        panel.Children.Add(new TextBlock { Text = "Canais da Twitch", FontSize = 17, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 10) });
-        panel.Children.Add(new TextBlock { Text = "Informe os canais participantes do bônus, separados por vírgula:", TextWrapping = TextWrapping.Wrap });
-        var input = new TextBox { Text = twitchChannels, Margin = new Thickness(0, 10, 0, 10), ToolTip = "Ex.: canal1, canal2, canal3" };
-        panel.Children.Add(input);
-        panel.Children.Add(new TextBlock { Text = "As lives abrirão lado a lado no MultiTwitch. Faça login na Twitch se necessário. A contabilização dos bônus depende das regras da plataforma.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 0, 0, 12) });
-        panel.Children.Add(Btn("Abrir MultiTwitch", "Abrir canais configurados no navegador", () =>
-        {
-            var channels = input.Text.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(c => c.Trim().TrimStart('@'))
-                .Where(c => System.Text.RegularExpressions.Regex.IsMatch(c, @"^[a-zA-Z0-9_]{3,25}$"))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(12).ToArray();
-            if (channels.Length == 0)
+            if (browser?.CoreWebView2 is not { } core) continue;
+            try
             {
-                MessageBox.Show(window, "Informe pelo menos um nome de canal válido (sem URL).", "MultiTwitch");
-                return;
+                var json = await core.ExecuteScriptAsync(script);
+                foreach (var name in JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>())
+                    if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Za-z0-9_]{3,25}$"))
+                        names.Add(name);
             }
-            twitchChannels = string.Join(", ", channels);
-            SaveSettings();
-            OpenUrl("https://www.multitwitch.tv/" + string.Join("/", channels.Select(Uri.EscapeDataString)));
-            window.Close();
-        }));
-        window.Content = panel;
-        window.ShowDialog();
+            catch { }
+        }
+        if (names.Count == 0)
+        {
+            MessageBox.Show(this, "Abra o painel Bônus Twitch no PokeIdle e deixe a lista de canais visível. Nenhuma live foi confirmada.", "Lives Twitch");
+            return;
+        }
+        var channels = names.Take(12).ToArray();
+        OpenUrl(channels.Length == 1
+            ? "https://www.twitch.tv/" + Uri.EscapeDataString(channels[0])
+            : "https://www.multitwitch.tv/" + string.Join("/", channels.Select(Uri.EscapeDataString)));
     }
 
     private void ChangeLayout(string next)
