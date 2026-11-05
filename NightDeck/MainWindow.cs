@@ -26,7 +26,6 @@ public sealed class MainWindow : Window
     private readonly Grid board = new() { Background = BackgroundBrush };
     private readonly Border[] panes = new Border[4];
     private readonly WebView2[] browsers = new WebView2[4];
-    private readonly List<CoreWebView2Frame>[] twitchFrames = Enumerable.Range(0, 4).Select(_ => new List<CoreWebView2Frame>()).ToArray();
     private readonly TextBlock[] zoomLabels = new TextBlock[4];
     private Button? globalZoomButton;
     private readonly Button[] accountButtons = new Button[4];
@@ -37,8 +36,10 @@ public sealed class MainWindow : Window
     private readonly UpdateService updater = new(UpdateRepository());
     private readonly MenuItem updateCheckItem = new() { Header = "Verificar agora" };
     private bool checkingUpdates;
+    private bool echoEnabled;
+    private Button? echoButton;
+    private readonly DateTime[] lastEcho = new DateTime[4];
     private string layout = "grid";
-    private string twitchChannels = "";
     private int? focused;
     private bool fullScreen;
     private WindowStyle previousStyle;
@@ -139,104 +140,81 @@ public sealed class MainWindow : Window
         toolbarRight.Children.Add(Btn("⟳ Todas", "Recarregar as contas", () => { foreach (var b in browsers) b?.CoreWebView2?.Reload(); }));
         toolbarRight.Children.Add(Btn("Navegador", "Abrir PokeIdle no navegador", () => OpenUrl(GameUrl)));
         toolbarRight.Children.Add(Btn("Onde caçar", "Ferramenta de caça", () => OpenUrl(HuntUrl)));
-        toolbarRight.Children.Add(Btn("Echo", "Em desenvolvimento", () => MessageBox.Show(this, "Echo ainda não implementado.", "Night Deck")));
-        toolbarRight.Children.Add(TwitchButton());
+        echoButton = Btn("Echo OFF", "Sincronizar cliques em botões entre as contas visíveis", ToggleEcho);
+        toolbarRight.Children.Add(echoButton);
         DockPanel.SetDock(toolbarLeft, Dock.Left);
         toolbar.Children.Add(toolbarLeft);
         toolbar.Children.Add(toolbarRight);
     }
 
-    private Button TwitchButton()
+    private void ToggleEcho()
     {
-        var button = Btn("", "Abrir canais ao vivo do PokeIdle", () => _ = OpenLiveTwitchAsync(), width: 38);
-        var icon = new System.Windows.Shapes.Path
+        echoEnabled = !echoEnabled;
+        if (echoButton != null)
         {
-            Data = Geometry.Parse("M 2,2 L 23,2 23,17 17,23 12,23 8,27 8,23 2,23 Z M 10,9 L 10,17 M 17,9 L 17,17"),
-            Stroke = Brushes.White,
-            StrokeThickness = 2.3,
-            StrokeLineJoin = PenLineJoin.Miter,
-            Stretch = Stretch.Uniform,
-            Width = 18,
-            Height = 20
-        };
-        button.Content = icon;
-        button.Background = Brush("#6441A5");
-        return button;
+            echoButton.Content = echoEnabled ? "Echo ON" : "Echo OFF";
+            echoButton.Background = echoEnabled ? AccentBrush : ButtonBrush;
+        }
     }
 
-    private void RegisterTwitchFrame(int account, CoreWebView2Frame frame)
-    {
-        twitchFrames[account].Add(frame);
-        frame.Destroyed += (_, _) => twitchFrames[account].Remove(frame);
-    }
-
-    private async Task OpenLiveTwitchAsync()
-    {
-        // Port of the live-channel discovery from Electron v1.45.2.
-        // The PokeIdle bonus panel must be visible. Never assume offline channels are live.
-        const string script = """
-            (() => {
-              const found = new Set();
-              const valid = n => /^[A-Za-z0-9_]{3,25}$/.test(n);
-              const live = t => /ao\\s*vivo/i.test(t || '');
-              const stop = /^(b[ôo]nus|ativado|ao|vivo|offline|canais|oficiais|live|lives|twitch)$/i;
-              document.querySelectorAll('a[href*="twitch.tv/"]').forEach(a => {
-                const m = a.href.match(/twitch\\.tv\\/([A-Za-z0-9_]+)/);
-                if (!m || !valid(m[1])) return;
-                for (let el = a, k = 0; k < 6 && el; k++, el = el.parentElement) {
-                  if (live(el.innerText)) {
-                    if (el.matches('a') || el.querySelectorAll('a[href*="twitch.tv/"]').length === 1) found.add(m[1]);
-                    break;
-                  }
-                }
-              });
-              if (!found.size) {
-                const lines = (document.body.innerText || '').split('\\n').map(t => t.trim()).filter(Boolean);
-                lines.forEach((line, i) => {
-                  if (!live(line)) return;
-                  for (let j = i; j >= 0 && j >= i - 5; j--) {
-                    const tokens = lines[j].split(/[\\s·•|]+/).map(t => t.replace(/^[^A-Za-z0-9_]+|[^A-Za-z0-9_]+$/g, '')).filter(Boolean);
-                    const candidate = tokens.find(t => valid(t) && !stop.test(t) && !/^\\d+$/.test(t));
-                    if (candidate) { found.add(candidate); break; }
-                  }
-                });
+    // Only mirror explicit button-like clicks, not game movement or typing.
+    private const string EchoCaptureScript = """
+        (() => {
+          if (window.__nightDeckEcho) return;
+          window.__nightDeckEcho = true;
+          document.addEventListener('click', event => {
+            const el = event.target?.closest?.('button,a,summary,[role="button"],[role="tab"]');
+            if (!el || el.closest('input,textarea,[contenteditable="true"]')) return;
+            const tag = el.tagName.toLowerCase();
+            const text = (el.getAttribute('aria-label') || el.title || el.innerText || '').trim().replace(/\\s+/g,' ').slice(0,100);
+            const path = (() => {
+              const parts = [];
+              for (let n = el; n && n !== document.body && parts.length < 10; n = n.parentElement) {
+                const siblings = [...(n.parentElement?.children || [])].filter(x => x.tagName === n.tagName);
+                parts.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + (siblings.indexOf(n) + 1) + ')');
               }
-              return [...found];
-            })()
-            """;
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var browser in browsers)
+              return parts.join(' > ');
+            })();
+            if (path) window.chrome?.webview?.postMessage({ kind:'nightdeck-echo', path, tag, text });
+          }, true);
+        })();
+        """;
+
+    private async void RelayEcho(int source, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        if (!echoEnabled || hidden[source] || focused.HasValue) return;
+        if ((DateTime.UtcNow - lastEcho[source]).TotalMilliseconds < 180) return;
+        try
         {
-            if (browser?.CoreWebView2 is not { } core) continue;
-            try
+            using var data = JsonDocument.Parse(args.WebMessageAsJson);
+            var root = data.RootElement;
+            if (root.GetProperty("kind").GetString() != "nightdeck-echo") return;
+            var path = root.GetProperty("path").GetString() ?? "";
+            var tag = root.GetProperty("tag").GetString() ?? "";
+            var label = root.GetProperty("text").GetString() ?? "";
+            if (path.Length is < 1 or > 1200 || label.Length > 100 ||
+                !new[] { "button", "a", "summary" }.Contains(tag) && tag != "div" && tag != "span") return;
+            lastEcho[source] = DateTime.UtcNow;
+            var payload = JsonSerializer.Serialize(new { path, tag, label });
+            var script = """
+                (() => {
+                  const d = PAYLOAD;
+                  const norm = x => String(x || '').trim().replace(/\\s+/g,' ').slice(0,100);
+                  let el;
+                  try { el = document.querySelector(d.path); } catch {}
+                  if (!el || (d.label && norm(el.getAttribute('aria-label') || el.title || el.innerText) !== d.label)) return;
+                  if (!el.matches('button,a,summary,[role="button"],[role="tab"]')) return;
+                  el.click();
+                })()
+                """.Replace("PAYLOAD", payload);
+            for (int i = 0; i < browsers.Length; i++)
             {
-                var json = await core.ExecuteScriptAsync(script);
-                foreach (var name in JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>())
-                    if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Za-z0-9_]{3,25}$"))
-                        names.Add(name);
-            }
-            catch { }
-            foreach (var frame in twitchFrames[Array.IndexOf(browsers, browser)].ToArray())
-            {
-                try
-                {
-                    var json = await frame.ExecuteScriptAsync(script);
-                    foreach (var name in JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>())
-                        if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Za-z0-9_]{3,25}$"))
-                            names.Add(name);
-                }
-                catch { /* Frame may have navigated or been destroyed. */ }
+                if (i == source || hidden[i] || browsers[i].CoreWebView2 == null) continue;
+                try { await browsers[i].CoreWebView2.ExecuteScriptAsync(script); }
+                catch { }
             }
         }
-        if (names.Count == 0)
-        {
-            MessageBox.Show(this, "Não consegui ler canais ao vivo. Deixe o painel Bônus Twitch aberto na Conta 1. Se continuar, envie uma captura do painel para ajustar o seletor.", "Lives Twitch");
-            return;
-        }
-        var channels = names.Take(12).ToArray();
-        OpenUrl(channels.Length == 1
-            ? "https://www.twitch.tv/" + Uri.EscapeDataString(channels[0])
-            : "https://www.multitwitch.tv/" + string.Join("/", channels.Select(Uri.EscapeDataString)));
+        catch { }
     }
 
     private void ChangeLayout(string next)
@@ -282,7 +260,9 @@ public sealed class MainWindow : Window
             Directory.CreateDirectory(folder);
             var env = await CoreWebView2Environment.CreateAsync(null, folder);
             await browsers[i].EnsureCoreWebView2Async(env);
-            browsers[i].CoreWebView2.FrameCreated += (_, args) => RegisterTwitchFrame(i, args.Frame);
+            int source = i;
+            browsers[i].CoreWebView2.WebMessageReceived += (_, args) => RelayEcho(source, args);
+            await browsers[i].CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EchoCaptureScript);
             browsers[i].CoreWebView2.Settings.AreDevToolsEnabled = false;
             browsers[i].CoreWebView2.IsMuted = muted[i];
             browsers[i].ZoomFactor = zooms[i];
@@ -493,7 +473,7 @@ public sealed class MainWindow : Window
     }
     private void SaveSettings()
     {
-        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, twitchChannels })); }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms })); }
         catch { }
     }
     private void LoadSettings()
@@ -501,7 +481,6 @@ public sealed class MainWindow : Window
         try
         {
             using var json = JsonDocument.Parse(File.ReadAllText(settingsFile));
-            if (json.RootElement.TryGetProperty("twitchChannels", out var t)) twitchChannels = t.GetString() ?? "";
             if (json.RootElement.TryGetProperty("layout", out var l)) layout = l.GetString() == "row" ? "row" : "grid";
             if (json.RootElement.TryGetProperty("zooms", out var z) && z.ValueKind == JsonValueKind.Array)
                 for (int i = 0; i < Math.Min(4, z.GetArrayLength()); i++) zooms[i] = Math.Clamp(z[i].GetDouble(), .3, 1.5);
