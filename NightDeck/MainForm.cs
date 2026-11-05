@@ -234,7 +234,7 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(Btn("⛶", "Tela cheia (F11)", ToggleFullscreen));
         toolbar.Controls.Add(Btn("⟳ Todas", "Recarregar as quatro contas", () => { foreach (var b in browsers) b?.CoreWebView2?.Reload(); }));
         toolbar.Controls.Add(Btn("Navegador", "Abrir PokeIdle no navegador padrão", () => OpenUrl(GameUrl)));
-        toolbar.Controls.Add(Btn("Onde caçar", "Abrir ferramenta de caça", () => OpenUrl("https://pokeidle-ferramentas.pages.dev/#hunt")));
+        toolbar.Controls.Add(Btn("Onde caçar", "Abrir ferramenta de caça", () => OpenUrl("https://pokeidle-gg.pages.dev/#hunt")));
         toolbar.Controls.Add(Btn("Echo", "Sincronização de cliques será adicionada em uma próxima etapa", () => MessageBox.Show("Echo ainda não está implementado nesta base nova.", "Night Deck")));
         toolbar.Controls.Add(Btn("TWITCH_ICON", "Abrir Twitch no navegador com acesso ao chat", () => OpenUrl("https://www.twitch.tv/"), width: 32));
         AlignToolbar();
