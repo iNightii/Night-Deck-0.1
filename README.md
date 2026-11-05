@@ -1,29 +1,26 @@
-# Night Deck — reconstrução em C#
+# Night Deck — WPF + WebView2
 
-Projeto novo em .NET 8 WinForms + WebView2, quatro sessões independentes, layout 2×2 / 1×4 horizontal, zoom individual e geral, som, recarregar, foco, ocultar, fullscreen e indicador de memória do processo principal.
+Aplicativo Windows em **C# / .NET 8 WPF**, com quatro sessões independentes do PokeIdle.
 
-## Executar
-No Windows, com .NET 8 SDK e WebView2 Runtime:
+## Funcionalidades
+- Quatro contas com perfis WebView2 separados em `%APPDATA%\\Night Deck\\Accounts`.
+- Layout 2×2 e 1×4 (quatro colunas lado a lado), foco e ocultação de contas.
+- Zoom, som e recarregamento por conta; atalhos globais.
+- Interface escura com botões arredondados; barra superior preservada ao trocar layouts.
+- Atalho **Onde caçar**: https://pokeidle-gg.pages.dev/#hunt
+- Menu de atualizações por GitHub Releases, com confirmação antes de baixar e executar o instalador.
+- Contador de RAM do processo principal (não inclui todos os processos do WebView2).
 
+## Executar no Windows
 ```powershell
-dotnet restore NightDeck/NightDeck.csproj
+dotnet restore NightDeck/NightDeck.csproj -r win-x64
 dotnet run --project NightDeck/NightDeck.csproj
 ```
 
-## Compilar
-```powershell
-dotnet publish NightDeck/NightDeck.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
-```
+## Publicar
+O GitHub Actions compila o aplicativo, cria instalador Inno Setup e tenta publicar um Release. Verifique o resultado em Actions/Releases antes de distribuir.
 
-## Estado
-Esta é a primeira base, ainda não um aplicativo final. O botão Cores e o Echo são placeholders explícitos. Sem Twitch, Kick, restock, extensões, limpeza forçada de RAM ou autoatualização. O contador de RAM mostra o processo principal; os processos WebView2 não são incluídos para não atribuir memória de outros aplicativos ao Night Deck.
+## Estado da migração
+A interface principal foi migrada de WinForms para WPF. As sessões continuam usando os mesmos diretórios de perfil, mas a nova interface ainda precisa de testes reais no Windows. Echo, recompra automática (Restock), personalização de cores e integração embutida da Twitch **não estão implementados**. Os respectivos botões são atalhos ou informam essa limitação. O botão Twitch abre o site no navegador padrão.
 
-Não substituir a branch main do projeto antigo sem autorização explícita.
-
-## Atualizações (novo)
-
-O menu **Atualizações → Verificar agora** consulta a versão mais recente publicada nos Releases do GitHub. Uma verificação também é executada automaticamente alguns segundos após a abertura. Se não houver atualização, a verificação automática não exibe janela. Quando há uma versão nova, o programa oferece baixar o instalador e pergunta antes de executá-lo e fechar as contas.
-
-**Configuração necessária:** preencha `NightDeck/update-source.json` com `"repository": "usuario/repositorio"`, usando o endereço do novo repositório. Publique Releases com tags numéricas (por exemplo, `v1.0.1`) e anexe um instalador Windows `.exe` cujo nome contenha `Night`. O número da tag deve ser maior que `<Version>` no arquivo `NightDeck.csproj`.
-
-A versão atual do workflow publica somente um executável em Artifacts, **não cria Releases nem instalador**. A publicação automática do instalador será configurada depois que o endereço do novo repositório for informado. Não execute arquivos de Releases de terceiros.
+A troca de layout preserva as instâncias WebView2, mas a movimentação dos controles entre posições pode causar um breve redesenho. Não há promessa de 60 FPS garantidos.
