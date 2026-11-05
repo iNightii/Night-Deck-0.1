@@ -20,7 +20,9 @@ public sealed class MainWindow : Window
     private static readonly Brush ButtonBrush = Brush("#1E293B");
     private static readonly Brush AccentBrush = Brush("#991B1B");
     private readonly DockPanel root = new();
-    private readonly WrapPanel toolbar = new() { Orientation = Orientation.Horizontal };
+    private readonly DockPanel toolbar = new() { LastChildFill = true };
+    private readonly StackPanel toolbarLeft = new() { Orientation = Orientation.Horizontal };
+    private readonly StackPanel toolbarRight = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
     private readonly Grid board = new() { Background = BackgroundBrush };
     private readonly Border[] panes = new Border[4];
     private readonly WebView2[] browsers = new WebView2[4];
@@ -29,8 +31,6 @@ public sealed class MainWindow : Window
     private readonly bool[] muted = new bool[4];
     private readonly bool[] hidden = new bool[4];
     private readonly double[] zooms = { .6, .6, .6, .6 };
-    private readonly TextBlock ram = new() { Foreground = Brushes.LightGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0) };
-    private readonly DispatcherTimer ramTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly string settingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Night Deck", "settings.json");
     private readonly UpdateService updater = new(UpdateRepository());
     private readonly MenuItem updateCheckItem = new() { Header = "Verificar agora" };
@@ -62,16 +62,13 @@ public sealed class MainWindow : Window
         menu.Items.Add(help);
         DockPanel.SetDock(menu, Dock.Top);
         root.Children.Add(menu);
-        var top = new Border { Background = BarBrush, Padding = new Thickness(5, 3, 5, 3), Child = new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled } };
+        var top = new Border { Background = BarBrush, Padding = new Thickness(5, 3, 5, 3), Child = toolbar };
         DockPanel.SetDock(top, Dock.Top);
         root.Children.Add(top);
         root.Children.Add(board);
         BuildToolbar();
         for (int i = 0; i < 4; i++) BuildPane(i);
         Rebuild();
-        ramTimer.Tick += (_, _) => RefreshRam();
-        ramTimer.Start();
-        RefreshRam();
         Loaded += async (_, _) =>
         {
             // WPF WebView2 must be attached to a loaded visual tree before initialization.
@@ -119,35 +116,37 @@ public sealed class MainWindow : Window
 
     private void BuildToolbar()
     {
-        toolbar.Children.Add(Btn("Grade 2×2", "Quatro contas em grade", () => ChangeLayout("grid"), layout == "grid"));
-        toolbar.Children.Add(Btn("Vertical 1×4", "Quatro contas lado a lado", () => ChangeLayout("row"), layout == "row"));
-        toolbar.Children.Add(Btn("Cores", "Personalização em desenvolvimento", () => MessageBox.Show(this, "Personalização de cores ainda não implementada.", "Night Deck")));
+        toolbarLeft.Children.Add(Btn("Grade 2×2", "Quatro contas em grade", () => ChangeLayout("grid"), layout == "grid"));
+        toolbarLeft.Children.Add(Btn("Vertical 1×4", "Quatro contas lado a lado", () => ChangeLayout("row"), layout == "row"));
+        toolbarLeft.Children.Add(Btn("Cores", "Personalização em desenvolvimento", () => MessageBox.Show(this, "Personalização de cores ainda não implementada.", "Night Deck")));
         for (int i = 0; i < 4; i++)
         {
             int index = i;
             var button = Btn($"Conta {i + 1}", "Focar esta conta", () => { hidden[index] = false; focused = focused == index ? null : index; Rebuild(); });
             accountButtons[i] = button;
-            toolbar.Children.Add(button);
+            toolbarLeft.Children.Add(button);
         }
-        toolbar.Children.Add(Btn("Todas", "Mostrar todas", () => { focused = null; Array.Fill(hidden, false); Rebuild(); }));
-        toolbar.Children.Add(ram);
-        toolbar.Children.Add(Btn("−", "Diminuir zoom de todas", () => SetGlobalZoom(-.1), width: 34));
-        toolbar.Children.Add(Btn("60%", "Restaurar zoom", () => { for (int i = 0; i < 4; i++) SetZoom(i, .6); }));
-        toolbar.Children.Add(Btn("+", "Aumentar zoom de todas", () => SetGlobalZoom(.1), width: 34));
-        toolbar.Children.Add(Btn("⛶", "Tela cheia (F11)", ToggleFullscreen, width: 36));
-        toolbar.Children.Add(Btn("⟳ Todas", "Recarregar as contas", () => { foreach (var b in browsers) b?.CoreWebView2?.Reload(); }));
-        toolbar.Children.Add(Btn("Navegador", "Abrir PokeIdle no navegador", () => OpenUrl(GameUrl)));
-        toolbar.Children.Add(Btn("Onde caçar", "Ferramenta de caça", () => OpenUrl(HuntUrl)));
-        toolbar.Children.Add(Btn("Echo", "Em desenvolvimento", () => MessageBox.Show(this, "Echo ainda não implementado.", "Night Deck")));
-        toolbar.Children.Add(Btn("♜", "Twitch (abrir no navegador)", () => OpenUrl("https://www.twitch.tv/"), width: 36));
+        toolbarLeft.Children.Add(Btn("Todas", "Mostrar todas", () => { focused = null; Array.Fill(hidden, false); Rebuild(); }));
+        toolbarRight.Children.Add(Btn("−", "Diminuir zoom de todas", () => SetGlobalZoom(-.1), width: 34));
+        toolbarRight.Children.Add(Btn("60%", "Restaurar zoom", () => { for (int i = 0; i < 4; i++) SetZoom(i, .6); }));
+        toolbarRight.Children.Add(Btn("+", "Aumentar zoom de todas", () => SetGlobalZoom(.1), width: 34));
+        toolbarRight.Children.Add(Btn("⛶", "Tela cheia (F11)", ToggleFullscreen, width: 36));
+        toolbarRight.Children.Add(Btn("⟳ Todas", "Recarregar as contas", () => { foreach (var b in browsers) b?.CoreWebView2?.Reload(); }));
+        toolbarRight.Children.Add(Btn("Navegador", "Abrir PokeIdle no navegador", () => OpenUrl(GameUrl)));
+        toolbarRight.Children.Add(Btn("Onde caçar", "Ferramenta de caça", () => OpenUrl(HuntUrl)));
+        toolbarRight.Children.Add(Btn("Echo", "Em desenvolvimento", () => MessageBox.Show(this, "Echo ainda não implementado.", "Night Deck")));
+        toolbarRight.Children.Add(Btn("♜", "Twitch (abrir no navegador)", () => OpenUrl("https://www.twitch.tv/"), width: 36));
+        DockPanel.SetDock(toolbarLeft, Dock.Left);
+        toolbar.Children.Add(toolbarLeft);
+        toolbar.Children.Add(toolbarRight);
     }
 
     private void ChangeLayout(string next)
     {
         layout = next; focused = null; Rebuild(); SaveSettings();
         // Update selection without rebuilding the toolbar or its controls.
-        if (toolbar.Children[0] is Button grid) grid.Background = layout == "grid" ? AccentBrush : ButtonBrush;
-        if (toolbar.Children[1] is Button row) row.Background = layout == "row" ? AccentBrush : ButtonBrush;
+        if (toolbarLeft.Children[0] is Button grid) grid.Background = layout == "grid" ? AccentBrush : ButtonBrush;
+        if (toolbarLeft.Children[1] is Button row) row.Background = layout == "row" ? AccentBrush : ButtonBrush;
     }
 
     private void BuildPane(int i)
@@ -170,7 +169,7 @@ public sealed class MainWindow : Window
         actions.Children.Add(Btn("⟳", "Recarregar", () => browsers[i].CoreWebView2?.Reload(), width: 30));
         actions.Children.Add(Btn("⛶", "Expandir conta", () => { focused = focused == i ? null : i; Rebuild(); }, width: 30));
         actions.Children.Add(Btn("◉", "Ocultar conta", () => { hidden[i] = true; focused = null; Rebuild(); }, width: 30));
-        actions.Children.Add(Btn("▣", "Abrir mercado (atalho)", () => _ = OpenMarketAsync(i), width: 30));
+        actions.Children.Add(Btn("▣", "Restock: configurar compras", () => ShowRestock(i), width: 30));
         var browser = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(12, 19, 31) };
         browsers[i] = browser;
         dock.Children.Add(browser);
@@ -194,6 +193,32 @@ public sealed class MainWindow : Window
         {
             MessageBox.Show(this, $"Não foi possível iniciar a Conta {i + 1}.\n\n{ex.Message}", "Erro WebView2", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private void ShowRestock(int i)
+    {
+        var window = new Window
+        {
+            Title = $"Restock — Conta {i + 1}",
+            Owner = this, Width = 370, Height = 285,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = BarBrush, Foreground = Brushes.White
+        };
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock { Text = "Reposição de recursos", FontSize = 17, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 12) });
+        panel.Children.Add(new TextBlock { Text = "Escolha a quantidade desejada para futura recompra:", TextWrapping = TextWrapping.Wrap });
+        var balls = new TextBox { Text = "100", Margin = new Thickness(0, 7, 0, 7), ToolTip = "Quantidade alvo de Pokéballs" };
+        var potions = new TextBox { Text = "50", Margin = new Thickness(0, 0, 0, 8), ToolTip = "Quantidade alvo de poções" };
+        panel.Children.Add(new TextBlock { Text = "Pokéballs (quantidade alvo)" });
+        panel.Children.Add(balls);
+        panel.Children.Add(new TextBlock { Text = "Poções (quantidade alvo)" });
+        panel.Children.Add(potions);
+        var note = new TextBlock { Text = "A recompra automática ainda depende da integração com o mercado do jogo. Nenhuma compra será feita por este painel.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 2, 0, 10) };
+        panel.Children.Add(note);
+        panel.Children.Add(Btn("Abrir mercado desta conta", "Tentar abrir o mercado sem comprar", () => { window.Close(); _ = OpenMarketAsync(i); }));
+        window.Content = panel;
+        window.ShowDialog();
     }
 
     private async Task OpenMarketAsync(int i)
@@ -238,12 +263,6 @@ public sealed class MainWindow : Window
             board.Children.Add(pane);
         }
         for (int i = 0; i < 4; i++) accountButtons[i].Background = focused == i ? AccentBrush : ButtonBrush;
-    }
-
-    private void RefreshRam()
-    {
-        try { using var p = Process.GetCurrentProcess(); ram.Text = $"● RAM {p.WorkingSet64 / 1048576d:0} MB (principal)"; }
-        catch { ram.Text = "RAM —"; }
     }
 
     private void ToggleFullscreen()
