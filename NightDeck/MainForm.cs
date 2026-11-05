@@ -143,14 +143,20 @@ public sealed class MainForm : Form
 
     private static Button Btn(string text, string tip, Action action, bool selected = false, int width = 0)
     {
-        var b = new RoundedButton
-        {
-            Text = text, AutoSize = width == 0, Width = width == 0 ? 0 : width,
-            Height = 29, FlatStyle = FlatStyle.Flat, BackColor = selected ? Accent : ButtonColor,
-            ForeColor = Color.White, Margin = new Padding(2, 2, 2, 0),
-            Padding = new Padding(7, 0, 7, 0), Cursor = Cursors.Hand,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular)
-        };
+        var b = text == "TWITCH_ICON" ? new TwitchIconButton() : new RoundedButton();
+        b.Text = text == "TWITCH_ICON" ? "" : text;
+        b.BackColor = selected ? Accent : ButtonColor;
+        b.ForeColor = Color.White;
+        b.FlatStyle = FlatStyle.Flat;
+        b.FlatAppearance.BorderColor = Color.FromArgb(60, 75, 95);
+        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 65, 85);
+        b.AutoSize = width == 0;
+        if (width != 0) b.Width = width;
+        b.Height = 29;
+        b.Margin = new Padding(2, 2, 2, 0);
+        b.Padding = new Padding(7, 0, 7, 0);
+        b.Cursor = Cursors.Hand;
+        b.Font = new Font("Segoe UI", 8.5f, FontStyle.Regular);
         b.FlatAppearance.BorderColor = Color.FromArgb(60, 75, 95);
         b.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 65, 85);
         b.Click += (_, _) => action();
@@ -175,6 +181,27 @@ public sealed class MainForm : Form
             var old = Region;
             Region = new Region(path);
             old?.Dispose();
+        }
+    }
+
+    private sealed class TwitchIconButton : RoundedButton
+    {
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(Color.White, 1.7f);
+            float x = Width / 2f - 8, y = Height / 2f - 9;
+            PointF[] outer = {
+                new(x, y), new(x + 17, y), new(x + 17, y + 12),
+                new(x + 12, y + 17), new(x + 8, y + 17),
+                new(x + 5, y + 20), new(x + 5, y + 17),
+                new(x, y + 17)
+            };
+            g.DrawPolygon(pen, outer);
+            g.DrawLine(pen, x + 7, y + 5, x + 7, y + 11);
+            g.DrawLine(pen, x + 12, y + 5, x + 12, y + 11);
         }
     }
 
@@ -209,15 +236,15 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(Btn("Navegador", "Abrir PokeIdle no navegador padrão", () => OpenUrl(GameUrl)));
         toolbar.Controls.Add(Btn("Onde caçar", "Abrir ferramenta de caça", () => OpenUrl("https://pokeidle-ferramentas.pages.dev/#hunt")));
         toolbar.Controls.Add(Btn("Echo", "Sincronização de cliques será adicionada em uma próxima etapa", () => MessageBox.Show("Echo ainda não está implementado nesta base nova.", "Night Deck")));
-        toolbar.Controls.Add(Btn("T", "Abrir Twitch no navegador com acesso ao chat", () => OpenUrl("https://www.twitch.tv/"), width: 32));
+        toolbar.Controls.Add(Btn("TWITCH_ICON", "Abrir Twitch no navegador com acesso ao chat", () => OpenUrl("https://www.twitch.tv/"), width: 32));
         AlignToolbar();
     }
 
     private void BuildPane(int i)
     {
         var pane = new Panel { Dock = DockStyle.Fill, Margin = new Padding(2), BackColor = Color.FromArgb(12, 19, 31) };
-        var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 28, BackColor = Bar, WrapContents = false, Padding = Padding.Empty };
-        var name = new Label { Text = $"🟢 Conta {i + 1}", AutoSize = true, ForeColor = Color.White, Margin = new Padding(6, 7, 10, 0), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold) };
+        var header = new Panel { Dock = DockStyle.Top, Height = 28, BackColor = Bar, Padding = Padding.Empty };
+        var name = new Label { Text = $"🟢 Conta {i + 1}", AutoSize = true, ForeColor = Color.White, Margin = new Padding(6, 7, 10, 0), Location = new Point(6, 7), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold) };
         header.Controls.Add(name);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 350, Height = 28,
             WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = Padding.Empty, Padding = Padding.Empty };
