@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Shapes;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -36,6 +37,7 @@ public sealed class MainWindow : Window
     private readonly MenuItem updateCheckItem = new() { Header = "Verificar agora" };
     private bool checkingUpdates;
     private string layout = "grid";
+    private string twitchChannels = "";
     private int? focused;
     private bool fullScreen;
     private WindowStyle previousStyle;
@@ -135,10 +137,65 @@ public sealed class MainWindow : Window
         toolbarRight.Children.Add(Btn("Navegador", "Abrir PokeIdle no navegador", () => OpenUrl(GameUrl)));
         toolbarRight.Children.Add(Btn("Onde caçar", "Ferramenta de caça", () => OpenUrl(HuntUrl)));
         toolbarRight.Children.Add(Btn("Echo", "Em desenvolvimento", () => MessageBox.Show(this, "Echo ainda não implementado.", "Night Deck")));
-        toolbarRight.Children.Add(Btn("♜", "Twitch (abrir no navegador)", () => OpenUrl("https://www.twitch.tv/"), width: 36));
+        toolbarRight.Children.Add(TwitchButton());
         DockPanel.SetDock(toolbarLeft, Dock.Left);
         toolbar.Children.Add(toolbarLeft);
         toolbar.Children.Add(toolbarRight);
+    }
+
+    private Button TwitchButton()
+    {
+        var button = Btn("", "MultiTwitch — configurar canais", ShowMultiTwitch, width: 38);
+        var icon = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 2,2 L 23,2 23,17 17,23 12,23 8,27 8,23 2,23 Z M 10,9 L 10,17 M 17,9 L 17,17"),
+            Stroke = Brushes.White,
+            StrokeThickness = 2.3,
+            StrokeLineJoin = PenLineJoin.Miter,
+            Stretch = Stretch.Uniform,
+            Width = 18,
+            Height = 20
+        };
+        button.Content = icon;
+        button.Background = Brush("#6441A5");
+        return button;
+    }
+
+    private void ShowMultiTwitch()
+    {
+        var window = new Window
+        {
+            Title = "MultiTwitch — Night Deck",
+            Owner = this, Width = 470, Height = 275,
+            MinWidth = 420, MinHeight = 255,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = BarBrush, Foreground = Brushes.White
+        };
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock { Text = "Canais da Twitch", FontSize = 17, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 10) });
+        panel.Children.Add(new TextBlock { Text = "Informe os canais participantes do bônus, separados por vírgula:", TextWrapping = TextWrapping.Wrap });
+        var input = new TextBox { Text = twitchChannels, Margin = new Thickness(0, 10, 0, 10), ToolTip = "Ex.: canal1, canal2, canal3" };
+        panel.Children.Add(input);
+        panel.Children.Add(new TextBlock { Text = "As lives abrirão lado a lado no MultiTwitch. Faça login na Twitch se necessário. A contabilização dos bônus depende das regras da plataforma.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 0, 0, 12) });
+        panel.Children.Add(Btn("Abrir MultiTwitch", "Abrir canais configurados no navegador", () =>
+        {
+            var channels = input.Text.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(c => c.Trim().TrimStart('@'))
+                .Where(c => System.Text.RegularExpressions.Regex.IsMatch(c, @"^[a-zA-Z0-9_]{3,25}$"))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(12).ToArray();
+            if (channels.Length == 0)
+            {
+                MessageBox.Show(window, "Informe pelo menos um nome de canal válido (sem URL).", "MultiTwitch");
+                return;
+            }
+            twitchChannels = string.Join(", ", channels);
+            SaveSettings();
+            OpenUrl("https://www.multitwitch.tv/" + string.Join("/", channels.Select(Uri.EscapeDataString)));
+            window.Close();
+        }));
+        window.Content = panel;
+        window.ShowDialog();
     }
 
     private void ChangeLayout(string next)
@@ -319,7 +376,7 @@ public sealed class MainWindow : Window
     }
     private void SaveSettings()
     {
-        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms })); }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, twitchChannels })); }
         catch { }
     }
     private void LoadSettings()
@@ -327,6 +384,7 @@ public sealed class MainWindow : Window
         try
         {
             using var json = JsonDocument.Parse(File.ReadAllText(settingsFile));
+            if (json.RootElement.TryGetProperty("twitchChannels", out var t)) twitchChannels = t.GetString() ?? "";
             if (json.RootElement.TryGetProperty("layout", out var l)) layout = l.GetString() == "row" ? "row" : "grid";
             if (json.RootElement.TryGetProperty("zooms", out var z) && z.ValueKind == JsonValueKind.Array)
                 for (int i = 0; i < Math.Min(4, z.GetArrayLength()); i++) zooms[i] = Math.Clamp(z[i].GetDouble(), .3, 1.5);
