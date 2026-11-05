@@ -26,6 +26,7 @@ public sealed class MainWindow : Window
     private readonly Grid board = new() { Background = BackgroundBrush };
     private readonly Border[] panes = new Border[4];
     private readonly WebView2[] browsers = new WebView2[4];
+    private readonly List<CoreWebView2Frame>[] twitchFrames = Enumerable.Range(0, 4).Select(_ => new List<CoreWebView2Frame>()).ToArray();
     private readonly TextBlock[] zoomLabels = new TextBlock[4];
     private readonly Button[] accountButtons = new Button[4];
     private readonly bool[] muted = new bool[4];
@@ -160,6 +161,13 @@ public sealed class MainWindow : Window
         return button;
     }
 
+    private void RegisterTwitchFrame(int account, CoreWebView2Frame frame)
+    {
+        twitchFrames[account].Add(frame);
+        frame.Destroyed += (_, _) => twitchFrames[account].Remove(frame);
+        frame.FrameCreated += (_, args) => RegisterTwitchFrame(account, args.Frame);
+    }
+
     private async Task OpenLiveTwitchAsync()
     {
         // Port of the live-channel discovery from Electron v1.45.2.
@@ -206,10 +214,21 @@ public sealed class MainWindow : Window
                         names.Add(name);
             }
             catch { }
+            foreach (var frame in twitchFrames[Array.IndexOf(browsers, browser)].ToArray())
+            {
+                try
+                {
+                    var json = await frame.ExecuteScriptAsync(script);
+                    foreach (var name in JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>())
+                        if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Za-z0-9_]{3,25}$"))
+                            names.Add(name);
+                }
+                catch { /* Frame may have navigated or been destroyed. */ }
+            }
         }
         if (names.Count == 0)
         {
-            MessageBox.Show(this, "Abra o painel Bônus Twitch no PokeIdle e deixe a lista de canais visível. Nenhuma live foi confirmada.", "Lives Twitch");
+            MessageBox.Show(this, "Não consegui ler canais ao vivo. Deixe o painel Bônus Twitch aberto na Conta 1. Se continuar, envie uma captura do painel para ajustar o seletor.", "Lives Twitch");
             return;
         }
         var channels = names.Take(12).ToArray();
@@ -261,6 +280,7 @@ public sealed class MainWindow : Window
             Directory.CreateDirectory(folder);
             var env = await CoreWebView2Environment.CreateAsync(null, folder);
             await browsers[i].EnsureCoreWebView2Async(env);
+            browsers[i].CoreWebView2.FrameCreated += (_, args) => RegisterTwitchFrame(i, args.Frame);
             browsers[i].CoreWebView2.Settings.AreDevToolsEnabled = false;
             browsers[i].CoreWebView2.IsMuted = muted[i];
             browsers[i].ZoomFactor = zooms[i];
