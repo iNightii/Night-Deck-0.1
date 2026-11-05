@@ -28,6 +28,7 @@ public sealed class MainWindow : Window
     private readonly WebView2[] browsers = new WebView2[4];
     private readonly List<CoreWebView2Frame>[] twitchFrames = Enumerable.Range(0, 4).Select(_ => new List<CoreWebView2Frame>()).ToArray();
     private readonly TextBlock[] zoomLabels = new TextBlock[4];
+    private Button? globalZoomButton;
     private readonly Button[] accountButtons = new Button[4];
     private readonly bool[] muted = new bool[4];
     private readonly bool[] hidden = new bool[4];
@@ -130,7 +131,9 @@ public sealed class MainWindow : Window
         }
         toolbarLeft.Children.Add(Btn("Todas", "Mostrar todas", () => { focused = null; Array.Fill(hidden, false); Rebuild(); }));
         toolbarRight.Children.Add(Btn("−", "Diminuir zoom de todas", () => SetGlobalZoom(-.1), width: 34));
-        toolbarRight.Children.Add(Btn("60%", "Restaurar zoom", () => { for (int i = 0; i < 4; i++) SetZoom(i, .6); }));
+        globalZoomButton = Btn("60%", "Restaurar zoom de todas para 60%", () => { for (int i = 0; i < 4; i++) SetZoom(i, .6); });
+        toolbarRight.Children.Add(globalZoomButton);
+        RefreshGlobalZoomLabel();
         toolbarRight.Children.Add(Btn("+", "Aumentar zoom de todas", () => SetGlobalZoom(.1), width: 34));
         toolbarRight.Children.Add(Btn("⛶", "Tela cheia (F11)", ToggleFullscreen, width: 36));
         toolbarRight.Children.Add(Btn("⟳ Todas", "Recarregar as contas", () => { foreach (var b in browsers) b?.CoreWebView2?.Reload(); }));
@@ -400,9 +403,19 @@ public sealed class MainWindow : Window
     {
         zooms[i] = Math.Round(Math.Clamp(value, .3, 1.5), 2);
         zoomLabels[i].Text = $"{zooms[i] * 100:0}%";
+        RefreshGlobalZoomLabel();
         if (browsers[i].CoreWebView2 != null) browsers[i].ZoomFactor = zooms[i];
         SaveSettings();
     }
+    private void RefreshGlobalZoomLabel()
+    {
+        if (globalZoomButton == null) return;
+        var first = zooms[0];
+        globalZoomButton.Content = zooms.All(z => Math.Abs(z - first) < 0.001)
+            ? $"{first * 100:0}%"
+            : "Misto";
+    }
+
     private void SetGlobalZoom(double delta) { for (int i = 0; i < 4; i++) SetZoom(i, zooms[i] + delta); }
 
     private void Rebuild()
