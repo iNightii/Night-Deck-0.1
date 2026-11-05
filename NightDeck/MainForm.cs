@@ -25,6 +25,10 @@ public sealed class MainForm : Form
     private readonly double[] zooms = { .6, .6, .6, .6 };
     private readonly System.Windows.Forms.Timer ramTimer = new() { Interval = 3000 };
     private readonly string settingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Night Deck", "settings.json");
+    private readonly UpdateService updater = new(UpdateRepository());
+    private readonly ToolStripMenuItem updatesMenu = new("Atualizações");
+    private readonly ToolStripMenuItem updateCheckItem = new("Verificar agora");
+    private bool checkingUpdates;
     private string layout = "grid";
     private int? focused;
     private bool fullScreen;
@@ -45,15 +49,93 @@ public sealed class MainForm : Form
         root.Controls.Add(toolbar, 0, 0);
         root.Controls.Add(board, 0, 1);
         Controls.Add(root);
+        BuildMainMenu();
         BuildToolbar();
         for (int i = 0; i < 4; i++) BuildPane(i);
         Rebuild();
         ramTimer.Tick += (_, _) => RefreshRam();
         ramTimer.Start();
         RefreshRam();
+        Shown += async (_, _) => { await Task.Delay(4000); if (!IsDisposed) await CheckUpdatesAsync(false); };
         FormClosing += (_, _) => SaveSettings();
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.KeyCode == Keys.F11) ToggleFullscreen(); };
+    }
+
+    private static string UpdateRepository()
+    {
+        try
+        {
+            var file = Path.Combine(AppContext.BaseDirectory, "update-source.json");
+            using var json = JsonDocument.Parse(File.ReadAllText(file));
+            return json.RootElement.GetProperty("repository").GetString() ?? "";
+        }
+        catch { return ""; }
+    }
+
+    private void BuildMainMenu()
+    {
+        var menu = new MenuStrip { BackColor = Bar, ForeColor = Color.White, Dock = DockStyle.Top };
+        updateCheckItem.Click += async (_, _) => await CheckUpdatesAsync(true);
+        updatesMenu.DropDownItems.Add(updateCheckItem);
+        menu.Items.Add(updatesMenu);
+        menu.Items.Add(new ToolStripMenuItem("Ajuda", null, (_, _) =>
+            MessageBox.Show("Night Deck — quatro contas PokeIdle", "Ajuda")));
+        MainMenuStrip = menu;
+        root.RowCount = 3;
+        root.RowStyles.Clear();
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Remove(toolbar);
+        root.Controls.Remove(board);
+        root.Controls.Add(menu, 0, 0);
+        root.Controls.Add(toolbar, 0, 1);
+        root.Controls.Add(board, 0, 2);
+    }
+
+    private async Task CheckUpdatesAsync(bool manual)
+    {
+        if (checkingUpdates) return;
+        checkingUpdates = true;
+        updateCheckItem.Enabled = false;
+        try
+        {
+            var result = await updater.CheckAsync();
+            if (IsDisposed) return;
+            if (!result.Available)
+            {
+                if (manual) MessageBox.Show(this, result.Message, "Atualizações", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            var choice = MessageBox.Show(this, result.Message + "\n\nDeseja baixar a atualização agora?",
+                "Atualização disponível", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (choice != DialogResult.Yes) return;
+            if (result.InstallerUrl is null)
+            {
+                if (result.ReleasePage is not null) OpenUrl(result.ReleasePage);
+                return;
+            }
+            updateCheckItem.Text = "Baixando atualização...";
+            var installer = await updater.DownloadInstallerAsync(result.InstallerUrl);
+            if (IsDisposed) return;
+            if (MessageBox.Show(this, "Download concluído. Deseja executar o instalador agora?\nAs contas serão fechadas.",
+                "Instalar atualização", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
+                Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (manual && !IsDisposed) MessageBox.Show(this, "Não foi possível verificar atualizações.\n" + ex.Message,
+                "Atualizações", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            checkingUpdates = false;
+            if (!IsDisposed) { updateCheckItem.Enabled = true; updateCheckItem.Text = "Verificar agora"; }
+        }
     }
 
     private static Button Btn(string text, string tip, Action action, bool selected = false, int width = 0)
