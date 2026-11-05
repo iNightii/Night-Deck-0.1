@@ -164,7 +164,7 @@ public sealed class MainForm : Form
         return b;
     }
 
-    private sealed class RoundedButton : Button
+    private class RoundedButton : Button
     {
         protected override void OnResize(EventArgs e)
         {
