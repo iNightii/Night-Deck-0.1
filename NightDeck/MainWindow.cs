@@ -18,7 +18,8 @@ public sealed class MainWindow : Window
     private static readonly Brush BackgroundBrush = Brush("#080C14");
     private static readonly Brush BarBrush = Brush("#111827");
     private static readonly Brush ButtonBrush = Brush("#1E293B");
-    private static readonly Brush AccentBrush = Brush("#991B1B");
+    private static Brush AccentBrush = Brush("#991B1B");
+    private string accentColor = "#991B1B";
     private readonly DockPanel root = new();
     private readonly DockPanel toolbar = new() { LastChildFill = true };
     private readonly StackPanel toolbarLeft = new() { Orientation = Orientation.Horizontal };
@@ -57,6 +58,7 @@ public sealed class MainWindow : Window
         Background = BackgroundBrush;
         Foreground = Brushes.White;
         LoadSettings();
+        AccentBrush = Brush(accentColor);
         Content = root;
         var menu = new Menu { Background = BarBrush, Foreground = Brushes.White, Height = 26 };
         var updates = new MenuItem { Header = "Atualizações" };
@@ -64,6 +66,9 @@ public sealed class MainWindow : Window
         updates.Items.Add(updateCheckItem);
         menu.Items.Add(updates);
         var preferences = new MenuItem { Header = "Preferências" };
+        var rename = new MenuItem { Header = "Renomear contas" };
+        rename.Click += (_, _) => ShowAccountNames();
+        preferences.Items.Add(rename);
         var motion = new MenuItem { Header = "Reduzir animações do jogo", IsCheckable = true, IsChecked = reduceMotion };
         motion.Click += async (_, _) => { reduceMotion = motion.IsChecked; SaveSettings(); await ApplyMotionToAllAsync(); };
         preferences.Items.Add(motion);
@@ -129,7 +134,7 @@ public sealed class MainWindow : Window
     {
         toolbarLeft.Children.Add(Btn("Grade 2×2", "Quatro contas em grade", () => ChangeLayout("grid"), layout == "grid"));
         toolbarLeft.Children.Add(Btn("Vertical 1×4", "Quatro contas lado a lado", () => ChangeLayout("row"), layout == "row"));
-        toolbarLeft.Children.Add(Btn("Cores", "Personalização em desenvolvimento", () => MessageBox.Show(this, "Personalização de cores ainda não implementada.", "Night Deck")));
+        toolbarLeft.Children.Add(Btn("Cores", "Alterar cor de destaque", ShowAccentColors));
         for (int i = 0; i < 4; i++)
         {
             int index = i;
@@ -152,6 +157,72 @@ public sealed class MainWindow : Window
         DockPanel.SetDock(toolbarLeft, Dock.Left);
         toolbar.Children.Add(toolbarLeft);
         toolbar.Children.Add(toolbarRight);
+    }
+
+    private void ShowAccentColors()
+    {
+        var dialog = new Window
+        {
+            Title = "Cores — Night Deck", Owner = this, Width = 370, Height = 190,
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = BarBrush, Foreground = Brushes.White
+        };
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock { Text = "Cor de destaque (hexadecimal)", Margin = new Thickness(0, 0, 0, 8) });
+        var field = new TextBox { Text = accentColor, MinHeight = 28 };
+        panel.Children.Add(field);
+        panel.Children.Add(Btn("Aplicar", "Atualizar destaque dos botões", () =>
+        {
+            var color = field.Text.Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9a-fA-F]{6}$"))
+            {
+                MessageBox.Show(dialog, "Use o formato #RRGGBB.", "Cores"); return;
+            }
+            accentColor = color;
+            AccentBrush = Brush(color);
+            if (echoButton != null && echoEnabled) echoButton.Background = AccentBrush;
+            if (toolbarLeft.Children.Count > 1)
+            {
+                if (toolbarLeft.Children[0] is Button grid) grid.Background = layout == "grid" ? AccentBrush : ButtonBrush;
+                if (toolbarLeft.Children[1] is Button row) row.Background = layout == "row" ? AccentBrush : ButtonBrush;
+            }
+            for (int i = 0; i < 4; i++) accountButtons[i].Background = focused == i ? AccentBrush : ButtonBrush;
+            SaveSettings(); dialog.Close();
+        }));
+        dialog.Content = panel;
+        dialog.ShowDialog();
+    }
+
+    private void ShowAccountNames()
+    {
+        var dialog = new Window
+        {
+            Title = "Nomes das contas", Owner = this, Width = 380, Height = 320,
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = BarBrush, Foreground = Brushes.White
+        };
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        var inputs = new TextBox[4];
+        for (int i = 0; i < 4; i++)
+        {
+            panel.Children.Add(new TextBlock { Text = $"Conta {i + 1}" });
+            inputs[i] = new TextBox { Text = accountNames[i], MaxLength = 28, Margin = new Thickness(0, 3, 0, 9) };
+            panel.Children.Add(inputs[i]);
+        }
+        panel.Children.Add(Btn("Salvar nomes", "Aplicar nomes personalizados", () =>
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                accountNames[i] = string.IsNullOrWhiteSpace(inputs[i].Text) ? $"Conta {i + 1}" : inputs[i].Text.Trim();
+                accountButtons[i].Content = accountNames[i];
+                if (panes[i].Child is DockPanel dock && dock.Children.OfType<DockPanel>().FirstOrDefault() is DockPanel header
+                    && header.Children.OfType<TextBlock>().FirstOrDefault() is TextBlock title)
+                    title.Text = "● " + accountNames[i];
+            }
+            SaveSettings(); dialog.Close();
+        }));
+        dialog.Content = new ScrollViewer { Content = panel };
+        dialog.ShowDialog();
     }
 
     private void ToggleEcho()
@@ -507,7 +578,7 @@ public sealed class MainWindow : Window
     }
     private void SaveSettings()
     {
-        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, reduceMotion, accountNames })); }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, reduceMotion, accountNames, accentColor })); }
         catch { }
     }
     private void LoadSettings()
@@ -515,6 +586,9 @@ public sealed class MainWindow : Window
         try
         {
             using var json = JsonDocument.Parse(File.ReadAllText(settingsFile));
+            if (json.RootElement.TryGetProperty("accentColor", out var ac) && ac.ValueKind == JsonValueKind.String &&
+                System.Text.RegularExpressions.Regex.IsMatch(ac.GetString() ?? "", "^#[0-9a-fA-F]{6}$"))
+                accentColor = ac.GetString()!;
             if (json.RootElement.TryGetProperty("reduceMotion", out var m) && (m.ValueKind == JsonValueKind.True || m.ValueKind == JsonValueKind.False)) reduceMotion = m.GetBoolean();
             if (json.RootElement.TryGetProperty("accountNames", out var names) && names.ValueKind == JsonValueKind.Array)
                 for (int i = 0; i < Math.Min(4, names.GetArrayLength()); i++)
