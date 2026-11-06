@@ -1,0 +1,2 @@
+# Tudo em LF, em qualquer PC (o .NET e o Chrome leem LF normal).
+* text=auto eol=lf
