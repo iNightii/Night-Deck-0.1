@@ -37,6 +37,8 @@ public sealed class MainWindow : Window
     private readonly MenuItem updateCheckItem = new() { Header = "Verificar agora" };
     private bool checkingUpdates;
     private bool echoEnabled;
+    private bool reduceMotion = true;
+    private readonly string[] accountNames = { "Conta 1", "Conta 2", "Conta 3", "Conta 4" };
     private Button? echoButton;
     private readonly DateTime[] lastEcho = new DateTime[4];
     private string layout = "grid";
@@ -61,6 +63,11 @@ public sealed class MainWindow : Window
         updateCheckItem.Click += async (_, _) => await CheckUpdatesAsync(true);
         updates.Items.Add(updateCheckItem);
         menu.Items.Add(updates);
+        var preferences = new MenuItem { Header = "Preferências" };
+        var motion = new MenuItem { Header = "Reduzir animações do jogo", IsCheckable = true, IsChecked = reduceMotion };
+        motion.Click += async (_, _) => { reduceMotion = motion.IsChecked; SaveSettings(); await ApplyMotionToAllAsync(); };
+        preferences.Items.Add(motion);
+        menu.Items.Add(preferences);
         var help = new MenuItem { Header = "Ajuda" };
         help.Click += (_, _) => MessageBox.Show(this, "Night Deck — quatro contas PokeIdle", "Ajuda");
         menu.Items.Add(help);
@@ -126,7 +133,7 @@ public sealed class MainWindow : Window
         for (int i = 0; i < 4; i++)
         {
             int index = i;
-            var button = Btn($"Conta {i + 1}", "Focar esta conta", () => { hidden[index] = false; focused = focused == index ? null : index; Rebuild(); });
+            var button = Btn(accountNames[i], "Focar esta conta", () => { hidden[index] = false; focused = focused == index ? null : index; Rebuild(); });
             accountButtons[i] = button;
             toolbarLeft.Children.Add(button);
         }
@@ -231,7 +238,7 @@ public sealed class MainWindow : Window
         var header = new DockPanel { Background = BarBrush, Height = 31, LastChildFill = false };
         DockPanel.SetDock(header, Dock.Top);
         dock.Children.Add(header);
-        var name = new TextBlock { Text = $"● Conta {i + 1}", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock { Text = $"● {accountNames[i]}", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
         header.Children.Add(name);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         DockPanel.SetDock(actions, Dock.Right);
@@ -263,6 +270,8 @@ public sealed class MainWindow : Window
             int source = i;
             browsers[i].CoreWebView2.WebMessageReceived += (_, args) => RelayEcho(source, args);
             await browsers[i].CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EchoCaptureScript);
+            await browsers[i].CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(MotionScript);
+            browsers[i].NavigationCompleted += async (_, _) => await ApplyMotionAsync(i);
             browsers[i].CoreWebView2.Settings.AreDevToolsEnabled = false;
             browsers[i].CoreWebView2.IsMuted = muted[i];
             browsers[i].ZoomFactor = zooms[i];
@@ -378,6 +387,31 @@ public sealed class MainWindow : Window
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Restock"); }
     }
 
+    // Adapted from the ReduceMotion preference in PokeIdleMulti 2026.11.05.2.
+    private const string MotionScript = """
+        (() => {
+          const style = document.createElement('style');
+          style.id = 'nightdeck-motion';
+          style.textContent = '@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }';
+          (document.head || document.documentElement).appendChild(style);
+        })();
+        """;
+
+    private async Task ApplyMotionAsync(int i)
+    {
+        if (browsers[i].CoreWebView2 == null) return;
+        var js = reduceMotion
+            ? "document.documentElement.style.setProperty('scroll-behavior','auto'); document.documentElement.dataset.nightDeckReduceMotion='1';"
+            : "document.documentElement.style.removeProperty('scroll-behavior'); delete document.documentElement.dataset.nightDeckReduceMotion;";
+        try { await browsers[i].CoreWebView2.ExecuteScriptAsync(js); }
+        catch { }
+    }
+
+    private async Task ApplyMotionToAllAsync()
+    {
+        for (int i = 0; i < 4; i++) await ApplyMotionAsync(i);
+    }
+
     private void SetZoom(int i, double value)
     {
         zooms[i] = Math.Round(Math.Clamp(value, .3, 1.5), 2);
@@ -473,7 +507,7 @@ public sealed class MainWindow : Window
     }
     private void SaveSettings()
     {
-        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms })); }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, reduceMotion, accountNames })); }
         catch { }
     }
     private void LoadSettings()
@@ -481,6 +515,10 @@ public sealed class MainWindow : Window
         try
         {
             using var json = JsonDocument.Parse(File.ReadAllText(settingsFile));
+            if (json.RootElement.TryGetProperty("reduceMotion", out var m) && (m.ValueKind == JsonValueKind.True || m.ValueKind == JsonValueKind.False)) reduceMotion = m.GetBoolean();
+            if (json.RootElement.TryGetProperty("accountNames", out var names) && names.ValueKind == JsonValueKind.Array)
+                for (int i = 0; i < Math.Min(4, names.GetArrayLength()); i++)
+                    if (names[i].ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(names[i].GetString())) accountNames[i] = names[i].GetString()!;
             if (json.RootElement.TryGetProperty("layout", out var l)) layout = l.GetString() == "row" ? "row" : "grid";
             if (json.RootElement.TryGetProperty("zooms", out var z) && z.ValueKind == JsonValueKind.Array)
                 for (int i = 0; i < Math.Min(4, z.GetArrayLength()); i++) zooms[i] = Math.Clamp(z[i].GetDouble(), .3, 1.5);
