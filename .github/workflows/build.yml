@@ -1,62 +1,32 @@
-name: Build Night Deck Windows
-
+name: Night Deck Original - Windows
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
-  contents: write
-
+  contents: read
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 45
     steps:
-      - name: Obter codigo
-        uses: actions/checkout@v5
-
-      - name: Preparar .NET 8
-        uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-
-      - name: Restaurar dependencias
-        run: dotnet restore NightDeck/NightDeck.csproj -r win-x64
-
-      - name: Compilar para Windows x64
-        run: dotnet publish NightDeck/NightDeck.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=1.0.${{ github.run_number }} -o publish
-
-      - name: Disponibilizar executavel
-        uses: actions/upload-artifact@v5
+      - name: Publicar aplicativo
+        shell: pwsh
+        run: dotnet publish PokeIdleMulti/PokeIdleMulti.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+      - uses: actions/upload-artifact@v4
         with:
-          name: Night-Deck-Windows-x64
+          name: Night-Deck-Original-Portable
           path: publish/
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Instalar criador do instalador
+      - name: Instalar Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
-
-      - name: Criar instalador Windows
+      - name: Criar instalador
         shell: pwsh
-        run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=1.0.${{ github.run_number }}" installer.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Publicar instalador como Artifact
-        uses: actions/upload-artifact@v5
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+      - uses: actions/upload-artifact@v4
         with:
-          name: Night-Deck-Installer
-          path: dist/Night-Deck-Setup.exe
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Publicar Release para o atualizador
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "v1.0.${{ github.run_number }}" "dist/Night-Deck-Setup.exe" --repo "${{ github.repository }}" --title "Night Deck v1.0.${{ github.run_number }}" --notes "Compilação Windows x64 do Night Deck." --latest
+          name: Night-Deck-Original-Installer
+          path: installer-output/*.exe

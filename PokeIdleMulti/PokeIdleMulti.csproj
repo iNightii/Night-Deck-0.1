@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PokeIdleMulti</AssemblyName>
+    <RootNamespace>PokeIdleMulti</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Product>PokeIdle Deck</Product>
+    <!-- O exe vai sozinho para a pasta do deck: a WebView2Loader.dll precisa ir dentro dele. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- O ícone do exe (Explorer, atalho, barra de tarefas); embutido também, para as janelas. -->
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+
+    <EmbeddedResource Include="recompra.js" LogicalName="recompra.js" />
+  </ItemGroup>
+
+</Project>
