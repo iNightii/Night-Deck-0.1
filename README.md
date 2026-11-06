@@ -1,26 +1,39 @@
-# Night Deck
+# Night Deck — PokeIdle Multiscreen
 
-Aplicativo original em Windows Forms (.NET 8 + WebView2) para gerenciar até quatro contas do PokeIdle.
+Aplicativo Windows Forms (.NET 8 + Microsoft Edge WebView2) que reúne até quatro contas de [PokeIdle](https://pokeidle.io/app) numa única janela.
 
-## Recursos incluídos no código
+## Origem deste projeto
 
-- Quatro contas, controles e layouts
-- Eco de cliques entre contas (`Echo.cs`)
-- Lives Twitch e Kick, com janelas e configurações
-- Extensões e importação de armazenamento
-- Recompra e ferramentas de resgate
-- Ícone personalizado do aplicativo (`deck.ico`)
+A referência principal é o pacote **PokeIdleMulti-2026.11.05.2**, fornecido pelo usuário. Os arquivos C#, JavaScript e os componentes das lives Twitch/Kick do pacote já correspondem aos arquivos do projeto (desconsiderando a quebra de linha final). **Não foram importados a pasta `nudes/` nem o arquivo `deck.ico` do pacote.** O ícone próprio que já estava no repositório foi preservado.
 
-A presença de um recurso no código não garante que todos os fluxos estejam validados no Windows.
+O projeto mantém a licença MIT e a atribuição do autor original em [LICENSE](LICENSE).
 
-## Baixar para Windows
+## Recursos disponíveis no código
 
-1. Abra [Actions](https://github.com/iNightii/Night-Deck-0.1/actions).
-2. Selecione a execução bem-sucedida de **Night Deck Original - Windows**.
-3. Baixe **Night-Deck-Original-Portable** ou **Night-Deck-Original-Installer** nos artefatos.
+- Até quatro contas, cada uma com seu perfil WebView2, controles próprios de zoom e layouts;
+- Eco de cliques entre contas (`Echo.cs`);
+- Janelas de lives **Twitch e Kick**, com menus de canais, vídeo, chat e opções de reprodução;
+- Recompra / restock e ferramenta de resgates;
+- Controles de economia de recursos, voto no TopIdle e extensões;
+- Configurações e controles de interface do projeto original.
 
-A compilação usa GitHub Actions em Windows. O executável e o instalador são gerados pelo workflow; não é necessário instalar npm para executá-los.
+Esses recursos estão implementados no código, mas fluxos específicos ainda precisam ser validados em execução no Windows. Este é um projeto de fã não oficial.
 
-## Desenvolvimento
+## Baixar
 
-Projeto principal: `PokeIdleMulti/PokeIdleMulti.csproj`. Requer SDK .NET 8 para compilar localmente.
+- [Releases — versões publicadas](https://github.com/iNightii/Night-Deck-0.1/releases/latest)
+- [Actions — compilações e artefatos](https://github.com/iNightii/Night-Deck-0.1/actions)
+
+A cada push na branch `main`, o workflow do Windows compila o aplicativo. Quando as etapas terminam com sucesso, ele publica um **Release** com o ZIP portátil e o instalador. O download de um novo Release **não instala a atualização automaticamente dentro do aplicativo**.
+
+## Executar e compilar
+
+Para executar no Windows 10/11, use o instalador ou extraia o ZIP portátil. O aplicativo precisa do **Microsoft Edge WebView2 Runtime**. Os perfis de contas e cookies não devem ser enviados ao GitHub.
+
+Para compilar localmente, instale o SDK .NET 8 e execute:
+
+```powershell
+dotnet publish PokeIdleMulti/PokeIdleMulti.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+O projeto principal está em `PokeIdleMulti/PokeIdleMulti.csproj`.
