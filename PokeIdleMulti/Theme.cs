@@ -37,7 +37,7 @@ internal static class Theme
     public const string CartGlyph = "";
 
     /// <summary>O ícone do deck (o mesmo do exe), na barra de título e na barra de tarefas.</summary>
-    public static Icon AppIcon { get; } = SystemIcons.Application;
+    public static Icon AppIcon { get; } = new(typeof(Theme).Assembly.GetManifestResourceStream("deck.ico")!);
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
