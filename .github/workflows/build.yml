@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -30,3 +30,16 @@ jobs:
         with:
           name: Night-Deck-Original-Installer
           path: installer-output/*.exe
+
+      - name: Empacotar versão portátil
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath Night-Deck-Original-Portable.zip -Force
+      - name: Publicar Release automaticamente
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "build-${{ github.run_number }}"
+          gh release create $tag "Night-Deck-Original-Portable.zip" installer-output/*.exe --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Night Deck - Build ${{ github.run_number }}" --notes "Compilação automática da branch main. Commit: ${{ github.sha }}" --latest
