@@ -20,6 +20,8 @@ public sealed class MainWindow : Window
     private static readonly Brush ButtonBrush = Brush("#1E293B");
     private static Brush AccentBrush = Brush("#991B1B");
     private string accentColor = "#991B1B";
+    private string twitchChannels = "";
+    private string kickChannels = "";
     private readonly DockPanel root = new();
     private readonly DockPanel toolbar = new() { LastChildFill = true };
     private readonly StackPanel toolbarLeft = new() { Orientation = Orientation.Horizontal };
@@ -154,9 +156,53 @@ public sealed class MainWindow : Window
         toolbarRight.Children.Add(Btn("Onde caçar", "Ferramenta de caça", () => OpenUrl(HuntUrl)));
         echoButton = Btn("Echo OFF", "Sincronizar cliques em botões entre as contas visíveis", ToggleEcho);
         toolbarRight.Children.Add(echoButton);
+        toolbarRight.Children.Add(Btn("Lives", "Abrir somente lives online da Twitch ou Kick", ShowLives));
         DockPanel.SetDock(toolbarLeft, Dock.Left);
         toolbar.Children.Add(toolbarLeft);
         toolbar.Children.Add(toolbarRight);
+    }
+
+    private void ShowLives()
+    {
+        var dialog = new Window
+        {
+            Title = "Lives Twitch / Kick", Owner = this, Width = 470, Height = 340,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = BarBrush, Foreground = Brushes.White
+        };
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock { Text = "Canais Twitch (separados por vírgula)" });
+        var twitch = new TextBox { Text = twitchChannels, MinHeight = 28, Margin = new Thickness(0, 5, 0, 12) };
+        panel.Children.Add(twitch);
+        panel.Children.Add(new TextBlock { Text = "Canais Kick (separados por vírgula)" });
+        var kick = new TextBox { Text = kickChannels, MinHeight = 28, Margin = new Thickness(0, 5, 0, 12) };
+        panel.Children.Add(kick);
+        var status = new TextBlock { Text = "Somente canais confirmados ao vivo serão abertos.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 10) };
+        panel.Children.Add(status);
+        panel.Children.Add(Btn("Verificar e abrir lives", "Consultar status atual", () => _ = LaunchLivesAsync()));
+        dialog.Content = panel;
+        dialog.ShowDialog();
+
+        async Task LaunchLivesAsync()
+        {
+            string[] Parse(string value) => value.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => x.TrimStart('@'))
+                .Where(x => System.Text.RegularExpressions.Regex.IsMatch(x, @"^[A-Za-z0-9_]{3,25}$"))
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(12).ToArray();
+            twitchChannels = twitch.Text;
+            kickChannels = kick.Text;
+            SaveSettings();
+            status.Text = "Verificando transmissões...";
+            try
+            {
+                var tw = await LiveStatus.TwitchOnlineAsync(Parse(twitchChannels));
+                var ki = await LiveStatus.KickOnlineAsync(Parse(kickChannels));
+                foreach (var name in tw) OpenUrl("https://www.twitch.tv/" + Uri.EscapeDataString(name));
+                foreach (var name in ki) OpenUrl("https://kick.com/" + Uri.EscapeDataString(name));
+                status.Text = $"Abertas: {tw.Count} Twitch, {ki.Count} Kick. Canais offline não foram abertos.";
+            }
+            catch (Exception ex) { status.Text = "Não foi possível verificar o status: " + ex.Message; }
+        }
     }
 
     private void ShowAccentColors()
@@ -578,7 +624,7 @@ public sealed class MainWindow : Window
     }
     private void SaveSettings()
     {
-        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, reduceMotion, accountNames, accentColor })); }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); File.WriteAllText(settingsFile, JsonSerializer.Serialize(new { layout, zooms, reduceMotion, accountNames, accentColor, twitchChannels, kickChannels })); }
         catch { }
     }
     private void LoadSettings()
@@ -586,6 +632,8 @@ public sealed class MainWindow : Window
         try
         {
             using var json = JsonDocument.Parse(File.ReadAllText(settingsFile));
+            if (json.RootElement.TryGetProperty("twitchChannels", out var tc) && tc.ValueKind == JsonValueKind.String) twitchChannels = tc.GetString() ?? "";
+            if (json.RootElement.TryGetProperty("kickChannels", out var kc) && kc.ValueKind == JsonValueKind.String) kickChannels = kc.GetString() ?? "";
             if (json.RootElement.TryGetProperty("accentColor", out var ac) && ac.ValueKind == JsonValueKind.String &&
                 System.Text.RegularExpressions.Regex.IsMatch(ac.GetString() ?? "", "^#[0-9a-fA-F]{6}$"))
                 accentColor = ac.GetString()!;
