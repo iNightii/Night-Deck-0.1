@@ -1,6 +1,14 @@
+# Build outputs and local developer state (preserve account sessions outside the repository)
 bin/
 obj/
 publish/
 installer-output/
 .vs/
 *.user
+*.exe
+*.zip
+# Do not commit user browser profiles, cookies, or credentials
+**/UserData/
+**/user-data/
+**/profiles/
+**/Cookies
