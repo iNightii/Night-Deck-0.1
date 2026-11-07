@@ -64,6 +64,7 @@ internal sealed class DeckForm : Form
     private readonly ToolStripButton[] _accountButtons = new ToolStripButton[Accounts];
     // ⇄ e ⚡, e não 🔁 e 🔋: na barra o Windows desenha esses dois emojis como quadrados.
     private readonly ToolStripButton _echoButton = new("⇄ Eco");
+    private readonly ToolStripButton _reloadAllButton = new("Recarregar todas");
     private bool _echo;
     private readonly ToolStripButton _zoomOutButton = new("−");
     private readonly ToolStripDropDownButton _zoomButton = new("Zoom 100%");
@@ -220,7 +221,10 @@ internal sealed class DeckForm : Form
 
         _echoButton.ToolTipText = "Eco: um clique numa conta se repete nas outras (no mesmo botão)";
         _echoButton.Click += (_, _) => SetEcho(!_echo);
+        _reloadAllButton.ToolTipText = "Recarregar as páginas de todas as contas ligadas, sem mexer nas lives da Twitch/Kick";
+        _reloadAllButton.Click += (_, _) => ReloadAllAccounts();
         _bar.Items.Add(new ToolStripSeparator());
+        _bar.Items.Add(_reloadAllButton);
         _bar.Items.Add(_echoButton);
 
         _zoomOutButton.ToolTipText = "Diminuir o zoom de todas as contas";
@@ -1153,6 +1157,17 @@ internal sealed class DeckForm : Form
     }
 
     // ---------- Ações das contas ----------
+
+    private void ReloadAllAccounts()
+    {
+        // Recarrega somente as páginas do PokeIdle. Contas desligadas permanecem desligadas
+        // e as janelas separadas de lives Twitch/Kick continuam funcionando normalmente.
+        foreach (var pane in _panes)
+        {
+            if (!pane.Off && pane.Core is not null)
+                pane.Reload();
+        }
+    }
 
     private void ShowAccountMenu(int index)
     {
