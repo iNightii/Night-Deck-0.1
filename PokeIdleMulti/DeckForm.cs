@@ -269,6 +269,8 @@ internal sealed class DeckForm : Form
         _sniperButton.DropDownOpening += (_, _) => FillSniperMenu();
         _sniperButton.DropDownItems.Add("…");
         _ultraButton.Alignment = ToolStripItemAlignment.Right;
+        // Abre para a esquerda do botão: impede que o menu atravesse para o segundo monitor.
+        _ultraButton.DropDownDirection = ToolStripDropDownDirection.BelowLeft;
         _ultraButton.ToolTipText = "ULTRA em todas as contas: o Modo ULTRA Economia do jogo (ULTRA Battery Saver). O jogo inteiro " +
                                    "sai da tela e fica só uma caixa com o XP, o Gold, os drops e os shinies da sessão; a caça continua. " +
                                    "Na setinha, o menos animações";
@@ -1155,6 +1157,8 @@ internal sealed class DeckForm : Form
         var fpsMenu = new ToolStripMenuItem(
             "🎞 Quadros do mapa: " + (_config.MapFps == 0 ? "Sem limite" : _config.MapFps + " FPS"))
         {
+            // O submenu de FPS também se abre para dentro do monitor principal.
+            DropDownDirection = ToolStripDropDownDirection.Left,
             ToolTipText = "Limita as atualizações visuais do jogo, inclusive outras animações da página. " +
                           "Não altera a velocidade de caça no servidor, nem as lives da Kick/Twitch.",
         };
