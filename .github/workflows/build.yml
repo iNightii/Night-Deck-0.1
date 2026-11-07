@@ -15,7 +15,7 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Publicar aplicativo
         shell: pwsh
-        run: dotnet publish PokeIdleMulti/PokeIdleMulti.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+        run: dotnet publish PokeIdleMulti/PokeIdleMulti.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=1.0.${{ github.run_number }} -o publish
       - uses: actions/upload-artifact@v4
         with:
           name: Night-Deck-Original-Portable
@@ -25,7 +25,7 @@ jobs:
         run: choco install innosetup --yes --no-progress
       - name: Criar instalador
         shell: pwsh
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=1.0.${{ github.run_number }} installer.iss'
       - uses: actions/upload-artifact@v4
         with:
           name: Night-Deck-Original-Installer

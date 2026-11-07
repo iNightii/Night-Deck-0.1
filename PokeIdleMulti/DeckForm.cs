@@ -72,6 +72,7 @@ internal sealed class DeckForm : Form
     private readonly ToolStripDropDownButton _kickButton = new("💰 Pontos da Kick") { Visible = false };
     private readonly ToolStripDropDownButton _twitchButton = new("💰 Pontos da Twitch") { Visible = false };
     private readonly ToolStripButton _extensionsButton = new("🧩 Extensões");
+    private readonly ToolStripButton _updateButton = new("Atualizações");
     private readonly ToolStripDropDownButton _sniperButton = new("🎯 Sniper") { Visible = false };
     private readonly bool[] _hasSniper = new bool[Accounts];
     private readonly ToolStripButton _fullscreenButton = new("⛶ Tela cheia");
@@ -96,6 +97,9 @@ internal sealed class DeckForm : Form
     private Rectangle _restoreBounds;
     private int _seconds;
     private bool _memoryBusy;
+    private bool _updateBusy;
+    private AppUpdater.Release? _availableUpdate;
+    private CancellationTokenSource? _updateCancellation;
 
     public DeckForm(bool selfTest)
     {
@@ -237,6 +241,9 @@ internal sealed class DeckForm : Form
         _fullscreenButton.Click += (_, _) => ToggleFullscreen();
         _extensionsButton.ToolTipText = "Instalar e gerenciar as extensões de cada conta";
         _extensionsButton.Click += (_, _) => OpenExtensions();
+        _updateButton.Alignment = ToolStripItemAlignment.Right;
+        _updateButton.ToolTipText = "Consultar e instalar a versão mais recente do Night Deck";
+        _updateButton.Click += async (_, _) => await CheckForUpdatesAsync(true);
         _livesButton.ToolTipText = "Lives da Twitch e da Kick tocando em segundo plano, juntando os pontos dos canais (o bônus das lives no jogo)";
         // Com o Shift apertado aparece também o resgate em lote, escondido.
         _livesButton.DropDownOpening += (_, _) => FillLivesMenu((ModifierKeys & Keys.Shift) == Keys.Shift);
@@ -265,10 +272,93 @@ internal sealed class DeckForm : Form
         _bar.Items.Add(_fullscreenButton);
         _bar.Items.Add(_ultraButton);
         _bar.Items.Add(_extensionsButton);
+        _bar.Items.Add(_updateButton);
         _bar.Items.Add(_sniperButton);
         _bar.Items.Add(_livesButton);
         _bar.Items.Add(_kickButton);
         _bar.Items.Add(_twitchButton);
+    }
+
+    // ---------- Atualizador pelo release oficial ----------
+    // O download só inicia depois da confirmação: nada é instalado silenciosamente.
+    private async Task CheckForUpdatesAsync(bool interactive)
+    {
+        if (_selfTest || _updateBusy || IsDisposed || Disposing)
+            return;
+
+        _updateBusy = true;
+        _updateButton.Enabled = false;
+        _updateButton.Text = "Verificando…";
+        using var cancellation = new CancellationTokenSource();
+        _updateCancellation = cancellation;
+        try
+        {
+            var latest = await AppUpdater.CheckAsync(cancellation.Token);
+            if (IsDisposed || Disposing)
+                return;
+
+            _availableUpdate = latest;
+            _updateButton.Text = latest is null ? "Atualizações" : $"Atualizar #{latest.Build}";
+            _updateButton.ToolTipText = latest is null
+                ? "Sem versão nova. Clique para verificar novamente"
+                : $"Nova versão disponível: {latest.Tag}. Clique para instalar.";
+
+            if (!interactive)
+                return;
+
+            if (latest is null)
+            {
+                MessageBox.Show(this,
+                    "Não foi encontrada uma versão mais recente nos Releases oficiais.\n\n" +
+                    $"Build instalado: {AppUpdater.CurrentBuild}.",
+                    Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var choice = MessageBox.Show(this,
+                $"Nova versão disponível: {latest.Tag}.\n\n" +
+                "Deseja baixar o instalador oficial e executá-lo?\n" +
+                "O aplicativo será fechado depois que o instalador abrir.\n\n" +
+                "Se estiver usando a versão portátil, o instalador fará uma instalação separada.",
+                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (choice != DialogResult.Yes)
+                return;
+
+            var progress = new Progress<int>(percent =>
+            {
+                if (!IsDisposed && !Disposing)
+                    _updateButton.Text = $"Baixando {percent}%";
+            });
+
+            string installer = await AppUpdater.DownloadAsync(latest, progress, cancellation.Token);
+            if (IsDisposed || Disposing)
+                return;
+
+            Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
+            Close(); // O instalador pode substituir os arquivos sem manter o deck aberto.
+        }
+        catch (OperationCanceledException)
+        {
+            // A janela foi fechada durante a verificação ou o download.
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing && interactive)
+                MessageBox.Show(this, "Não foi possível atualizar o Night Deck:\n" + ex.Message,
+                    Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            if (ReferenceEquals(_updateCancellation, cancellation))
+                _updateCancellation = null;
+            _updateBusy = false;
+            if (!IsDisposed && !Disposing)
+            {
+                _updateButton.Enabled = true;
+                _updateButton.Text = _availableUpdate is { } available
+                    ? $"Atualizar #{available.Build}" : "Atualizações";
+            }
+        }
     }
 
     private void BuildStatus()
@@ -294,6 +384,8 @@ internal sealed class DeckForm : Form
         try
         {
             await InitializeAsync();
+            if (!_selfTest)
+                _ = CheckForUpdatesAsync(false);
         }
         catch (Exception ex)
         {
@@ -613,6 +705,7 @@ internal sealed class DeckForm : Form
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         _clock.Stop();
+        _updateCancellation?.Cancel();
         SaveWindowBounds();
         SaveConfig();
         for (int i = 0; i < Accounts; i++)
@@ -903,6 +996,9 @@ internal sealed class DeckForm : Form
 
     private void OnClock()
     {
+        // Confere periodicamente, inclusive se o deck ficar aberto por dias.
+        if (!_selfTest && _seconds > 0 && _seconds % 21600 == 0)
+            _ = CheckForUpdatesAsync(false);
         foreach (var pane in _panes)
             pane.RefreshHeader();
         if (_seconds++ % 3 == 0)

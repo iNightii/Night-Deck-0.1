@@ -37,3 +37,7 @@ dotnet publish PokeIdleMulti/PokeIdleMulti.csproj -c Release -r win-x64 --self-c
 ```
 
 O projeto principal está em `PokeIdleMulti/PokeIdleMulti.csproj`.
+
+## Atualização dentro do aplicativo
+
+O botão **Atualizações** consulta o último Release publicado automaticamente ao iniciar o deck e a cada seis horas, sem reiniciar o jogo. Quando existe um build mais recente, o botão permite baixar o instalador oficial com confirmação do usuário; o aplicativo fecha após abrir o instalador. O ZIP portátil continua disponível nos Releases. A verificação não altera as contas ou as lives em execução.

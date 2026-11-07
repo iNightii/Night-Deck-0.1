@@ -1,5 +1,7 @@
 #define AppName "Night Deck"
-#define AppVersion "1.0.0"
+#ifndef AppVersion
+  #define AppVersion "1.0.0"
+#endif
 #define AppExe "PokeIdleMulti.exe"
 [Setup]
 AppId={{D8363C63-B6C1-4F2B-8BFA-31008F61D025}
