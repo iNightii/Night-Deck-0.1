@@ -216,6 +216,7 @@ internal sealed class AccountPane : UserControl
                 Clicked?.Invoke(this, click);
         };
         await core.AddScriptToExecuteOnDocumentCreatedAsync(KeyScript);
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(FrameRateLimiter.BootScript(MapFps));
         await core.AddScriptToExecuteOnDocumentCreatedAsync(Echo.CaptureScript);
         await core.AddScriptToExecuteOnDocumentCreatedAsync(Restock.Script);
         await ApplyReduceMotionAsync();
@@ -234,6 +235,25 @@ internal sealed class AccountPane : UserControl
 
     /// <summary>Menos animações (lido ao criar o navegador da conta; mudou depois, chame <see cref="ApplyReduceMotionAsync"/>).</summary>
     public bool ReduceMotion { get; set; }
+
+    /// <summary>Limite visual da página do jogo. 0 = sem limite.</summary>
+    public int MapFps { get; set; } = 15;
+
+    public async Task<bool> SetMapFpsAsync(int fps)
+    {
+        MapFps = FrameRateLimiter.Normalize(fps);
+        if (Core is null || Off)
+            return true;
+        try
+        {
+            return await WebView.ExecuteScriptAsync(FrameRateLimiter.SetScript(MapFps)) == "true";
+        }
+        catch
+        {
+            // Durante a navegação a próxima página recebe a opção no script de inicialização.
+            return false;
+        }
+    }
 
     /// <summary>
     /// A página passa a ver o "reduzir movimento" do sistema ligado (ou desligado), e o próprio jogo

@@ -147,7 +147,7 @@ internal sealed class DeckForm : Form
         {
             var pane = new AccountPane(i)
             {
-                AccountName = _config.AccountNames[i], ReduceMotion = _config.ReduceMotion, Ultra = _config.Ultra,
+                AccountName = _config.AccountNames[i], ReduceMotion = _config.ReduceMotion, Ultra = _config.Ultra, MapFps = _config.MapFps,
                 RestockConfig = _config.Restock[i],
             };
             pane.ShowRestock(null);
@@ -192,6 +192,9 @@ internal sealed class DeckForm : Form
         Theme.Style(_bar);
         _bar.Padding = new Padding(6, 3, 6, 3);
         _bar.Items.Add(new ToolStripLabel("PokeIdle Deck") { Font = new Font(_bar.Font, FontStyle.Bold), ForeColor = Theme.Accent });
+        // Deixar sempre à vista no começo, e não perdido entre os itens alinhados à direita.
+        _updateButton.Overflow = ToolStripItemOverflow.Never;
+        _bar.Items.Add(_updateButton);
         _bar.Items.Add(new ToolStripSeparator());
 
         _gridButton.ToolTipText = "As 4 contas em grade";
@@ -245,7 +248,7 @@ internal sealed class DeckForm : Form
         _fullscreenButton.Click += (_, _) => ToggleFullscreen();
         _extensionsButton.ToolTipText = "Instalar e gerenciar as extensões de cada conta";
         _extensionsButton.Click += (_, _) => OpenExtensions();
-        _updateButton.Alignment = ToolStripItemAlignment.Right;
+        _updateButton.Alignment = ToolStripItemAlignment.Left;
         _updateButton.ToolTipText = "Consultar e instalar a versão mais recente do Night Deck";
         _updateButton.Click += async (_, _) => await CheckForUpdatesAsync(true);
         _livesButton.ToolTipText = "Lives da Twitch e da Kick tocando em segundo plano, juntando os pontos dos canais (o bônus das lives no jogo)";
@@ -276,7 +279,6 @@ internal sealed class DeckForm : Form
         _bar.Items.Add(_fullscreenButton);
         _bar.Items.Add(_ultraButton);
         _bar.Items.Add(_extensionsButton);
-        _bar.Items.Add(_updateButton);
         _bar.Items.Add(_sniperButton);
         _bar.Items.Add(_livesButton);
         _bar.Items.Add(_kickButton);
@@ -1107,6 +1109,24 @@ internal sealed class DeckForm : Form
         }
     }
 
+    private async Task SetMapFpsAsync(int fps)
+    {
+        _config.MapFps = FrameRateLimiter.Normalize(fps);
+        SaveConfig();
+        var failed = new List<string>();
+        foreach (var pane in _panes)
+        {
+            pane.MapFps = _config.MapFps;
+            if (!pane.Off && pane.Core is not null && !await pane.SetMapFpsAsync(_config.MapFps))
+                failed.Add(pane.AccountName);
+        }
+        if (failed.Count > 0)
+            MessageBox.Show(this,
+                "Não foi possível aplicar os quadros nas contas: " + string.Join(", ", failed) +
+                "\nA configuração será aplicada ao recarregá-las.",
+                Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
     /// <summary>O ⚡ ULTRA na barra: laranja com "ligado", como o eco.</summary>
     private void ShowUltra()
     {
@@ -1130,6 +1150,30 @@ internal sealed class DeckForm : Form
         };
         motion.Click += async (_, _) => await SetReduceMotionAsync(!_config.ReduceMotion);
         items.Add(motion);
+
+        items.Add(new ToolStripSeparator());
+        var fpsMenu = new ToolStripMenuItem(
+            "🎞 Quadros do mapa: " + (_config.MapFps == 0 ? "Sem limite" : _config.MapFps + " FPS"))
+        {
+            ToolTipText = "Limita as atualizações visuais do jogo, inclusive outras animações da página. " +
+                          "Não altera a velocidade de caça no servidor, nem as lives da Kick/Twitch.",
+        };
+        foreach (int choice in FrameRateLimiter.Values)
+        {
+            int fps = choice;
+            var option = new ToolStripMenuItem(fps switch
+            {
+                15 => "15 FPS (padrão)",
+                0 => "Sem limite",
+                _ => fps + " FPS",
+            })
+            {
+                Checked = _config.MapFps == fps,
+            };
+            option.Click += async (_, _) => await SetMapFpsAsync(fps);
+            fpsMenu.DropDownItems.Add(option);
+        }
+        items.Add(fpsMenu);
     }
 
     /// <summary>

@@ -41,3 +41,9 @@ O projeto principal está em `PokeIdleMulti/PokeIdleMulti.csproj`.
 ## Atualização dentro do aplicativo
 
 O botão **Atualizações** consulta o último Release publicado automaticamente ao iniciar o deck e a cada seis horas, sem reiniciar o jogo. Quando existe um build mais recente, o botão permite baixar o instalador oficial com confirmação do usuário; o aplicativo fecha após abrir o instalador. O ZIP portátil continua disponível nos Releases. A verificação não altera as contas ou as lives em execução.
+
+## Limite visual de quadros
+
+Em **ULTRA → 🎞 Quadros do mapa**, selecione **15 FPS (padrão)**, **30 FPS**, **45 FPS**, **60 FPS** ou **Sem limite**. A opção vale para todas as contas e é salva em `deck.json`. A mudança funciona sem recarregar o PokeIdle. Sem limite significa que o deck não restringe o número de quadros (a taxa real depende do monitor e do navegador). O controle atua sobre callbacks de animação (`requestAnimationFrame`) da página do jogo, portanto também pode afetar outras animações da mesma página. Não controla os servidores do jogo, nem as janelas separadas da Twitch e Kick.
+
+A versão ZIP 2026.11.05.2 recebida não continha este controle, apesar de as notas do Release original o mencionarem; esta é uma implementação nova.

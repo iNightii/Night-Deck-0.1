@@ -46,6 +46,9 @@ internal sealed class DeckConfig
     /// </summary>
     public bool ReduceMotion { get; set; } = true;
 
+    /// <summary>FPS visual das páginas PokeIdle: 15/30/45/60, ou 0 para sem limite.</summary>
+    public int MapFps { get; set; } = 15;
+
     /// <summary>
     /// O Modo ULTRA Economia do jogo em todas as contas (o jogo inteiro fora da tela, só uma caixa de números).
     /// Ligado, a conta que recarrega ou é ligada volta a ele sozinha.
@@ -167,6 +170,7 @@ internal sealed class DeckConfig
         config.Restock = Fill(config.Restock, _ => new RestockConfig()).Select(r => (r ?? new RestockConfig()).Normalized()).ToArray();
         config.Focused = Math.Clamp(config.Focused, 0, Accounts - 1);
         config.KickPointsHeight = Math.Clamp(config.KickPointsHeight, 300, 3000);
+        config.MapFps = FrameRateLimiter.Normalize(config.MapFps);
         config.RedeemKick = Fill(config.RedeemKick, _ => null);
         if (config.KickRedeem == true)
             config.RedeemKick = config.RedeemKick.Select(r => (PokeIdleMulti.KickReward?)(r ?? config.KickReward ?? PokeIdleMulti.KickReward.Xp)).ToArray();
