@@ -16,10 +16,15 @@ jobs:
       - name: Publicar aplicativo
         shell: pwsh
         run: dotnet publish PokeIdleMulti/PokeIdleMulti.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=1.0.${{ github.run_number }} -o publish
+      - name: Organizar arquivos da versão portátil em uma pasta
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'portable/Night Deck' -Force | Out-Null
+          Copy-Item -Path 'publish/*' -Destination 'portable/Night Deck/' -Recurse -Force
       - uses: actions/upload-artifact@v4
         with:
           name: Night-Deck-Original-Portable
-          path: publish/
+          path: portable/
       - name: Instalar Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
@@ -34,7 +39,7 @@ jobs:
       - name: Empacotar versão portátil
         if: github.event_name == 'push'
         shell: pwsh
-        run: Compress-Archive -Path publish/* -DestinationPath Night-Deck-Original-Portable.zip -Force
+        run: Compress-Archive -Path 'portable/Night Deck' -DestinationPath Night-Deck-Original-Portable.zip -Force
       - name: Publicar Release automaticamente
         if: github.event_name == 'push'
         shell: pwsh

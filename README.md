@@ -28,7 +28,7 @@ A cada push na branch `main`, o workflow do Windows compila o aplicativo. Quando
 
 ## Executar e compilar
 
-Para executar no Windows 10/11, use o instalador ou extraia o ZIP portátil. O aplicativo precisa do **Microsoft Edge WebView2 Runtime**. Os perfis de contas e cookies não devem ser enviados ao GitHub.
+Para executar no Windows 10/11, prefira o instalador (que instala o app em uma pasta própria e cria somente um atalho opcional na Área de Trabalho). Se escolher o ZIP portátil, extraia em **Downloads** ou em outra pasta: os arquivos já vêm agrupados dentro da pasta **Night Deck**, evitando deixá-los soltos na Área de Trabalho. O aplicativo precisa do **Microsoft Edge WebView2 Runtime**. Os perfis de contas e cookies não devem ser enviados ao GitHub.
 
 Para compilar localmente, instale o SDK .NET 8 e execute:
 
